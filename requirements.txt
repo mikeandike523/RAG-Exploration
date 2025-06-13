@@ -1,0 +1,7 @@
+huggingface_hub[cli]
+transformers[accelerate]
+prompt_toolkit
+termcolor
+bitsandbytes
+protobuf
+sentencepiece
