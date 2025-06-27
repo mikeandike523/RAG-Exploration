@@ -1,7 +1,11 @@
-huggingface_hub[cli]
+
+
 transformers[accelerate]
 prompt_toolkit
 termcolor
 bitsandbytes
 protobuf
 sentencepiece
+
+# for downloading the model
+huggingface_hub[cli]

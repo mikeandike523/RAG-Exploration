@@ -90,6 +90,11 @@ class Mistral:
         messages = payload["messages"]
         top_p = payload.get("top_p", self.default_top_p)
         max_tokens = payload.get("max_tokens", None)
+
+        # TODO:
+        # If max_tokens is None, make it take up the remianing space of MAX_CONTENT_TOKENS
+        # However, we need to do testing to verify the value of MAX_CONTEXT_TOKENS by looking for memory
+        # or other runtime errors
         if max_tokens is None:
             raise ValueError(
                 "max_tokens is required. To simulate an unlimited response, consider supplying a very large value."
