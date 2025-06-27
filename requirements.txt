@@ -3,6 +3,7 @@
 transformers[accelerate]
 prompt_toolkit
 termcolor
+setuptools
 bitsandbytes
 protobuf
 sentencepiece
