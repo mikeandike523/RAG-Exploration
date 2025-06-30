@@ -30,7 +30,7 @@ def main():
                         "messages":messages,
                         "top_p":TOP_P,
                         "temperature": TEMPERATURE,
-                        "max_tokens":1024
+                        "max_tokens":None
                 }
             ).strip()
             messages.append({

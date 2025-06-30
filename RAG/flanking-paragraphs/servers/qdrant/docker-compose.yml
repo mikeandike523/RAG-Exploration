@@ -1,0 +1,16 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    # Map a host port (default 6333) to the Qdrant HTTP API port (6333 in the container).
+    # You can override QDRANT_HTTP_PORT in a .env file or your shell.
+    ports:
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+    # (Optional) If you need the gRPC port too, uncomment the next line and set QDRANT_GRPC_PORT
+    # - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  qdrant_data:
+    name: qdrant_data

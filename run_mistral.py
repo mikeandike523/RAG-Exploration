@@ -9,8 +9,6 @@ import traceback
 
 MISTRAL_7B_INSTRUCT = "mistralai/Mistral-7B-Instruct-v0.1"
 
-MAX_CONTEXT_TOKENS = 32768
-
 bnb_config_8bit = BitsAndBytesConfig(
     load_in_4bit=False,
     bnb_4bit_quant_type="nf4",
@@ -33,7 +31,7 @@ class Message:
 class CompletionRequest(TypedDict):
     messages: List[Message]
     top_p: Optional[float]
-    max_tokens: int
+    max_tokens: Optional[int]
     temperature: Optional[float]
 
 
@@ -46,8 +44,8 @@ class OutOfTokensError(Exception):
 @dataclass
 class OutOfMemoryError(Exception):
     device_or_devices: Union[str, List[str]]
-    used: int
-    requested: int
+    used: dict
+    requested: dict
 
 
 @dataclass
@@ -61,12 +59,11 @@ class Mistral:
     def __init__(
         self,
         model_id: str = MISTRAL_7B_INSTRUCT,
-        max_context_tokens: int = MAX_CONTEXT_TOKENS,
-        quantization: Optional[Literal["8bit", "4bit"]] = None,
+        quantization: Optional[Literal["8bit", "4bit"]]=None,
         default_temperature: float = 0.6,
         default_top_p: float = 0.9,
+        pad_margin: int = 2,
     ):
-        self.max_context_tokens = max_context_tokens
         self.model_id = model_id
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
         if quantization is not None:
@@ -74,9 +71,7 @@ class Mistral:
                 model_id,
                 device_map="auto",
                 torch_dtype=torch.float16,
-                quantization_config=(
-                    bnb_config_4bit if quantization == "4bit" else bnb_config_8bit
-                ),
+                quantization_config=(bnb_config_4bit if quantization=="4bit" else bnb_config_8bit),
             )
         else:
             model = AutoModelForCausalLM.from_pretrained(
@@ -85,20 +80,23 @@ class Mistral:
         self.model = model
         self.default_temperature = default_temperature
         self.default_top_p = default_top_p
+        self.pad_margin = pad_margin
+        # load config limits
+        cfg = self.model.config
+        self.hard_limit = getattr(cfg, "max_position_embeddings", None)
+        self.sliding_window = getattr(cfg, "sliding_window", None)
+
+    def _compute_max_new_tokens(self, input_ids_len: int) -> int:
+        # Prefer sliding window heuristic if available
+        budget = self.sliding_window or self.hard_limit
+        if budget is None:
+            raise ValueError("Model configuration missing context limits.")
+        return max(0, budget - input_ids_len - self.pad_margin)
 
     def completion(self, payload: CompletionRequest) -> str:
         messages = payload["messages"]
         top_p = payload.get("top_p", self.default_top_p)
         max_tokens = payload.get("max_tokens", None)
-
-        # TODO:
-        # If max_tokens is None, make it take up the remianing space of MAX_CONTENT_TOKENS
-        # However, we need to do testing to verify the value of MAX_CONTEXT_TOKENS by looking for memory
-        # or other runtime errors
-        if max_tokens is None:
-            raise ValueError(
-                "max_tokens is required. To simulate an unlimited response, consider supplying a very large value."
-            )
 
         temperature = payload.get("temperature", self.default_temperature)
 
@@ -107,10 +105,13 @@ class Mistral:
         input_ids = inputs["input_ids"]
         total_input_tokens = input_ids.shape[1]
 
-        if total_input_tokens > MAX_CONTEXT_TOKENS:
-            raise OutOfTokensError(
-                budget=MAX_CONTEXT_TOKENS, total_tokens=total_input_tokens
-            )
+        # Check against hard limit
+        if self.hard_limit and total_input_tokens > self.hard_limit:
+            raise OutOfTokensError(budget=self.hard_limit, total_tokens=total_input_tokens)
+
+        # Compute max_new_tokens if not provided
+        if max_tokens is None:
+            max_tokens = self._compute_max_new_tokens(total_input_tokens)
 
         try:
             output = self.model.generate(
@@ -125,55 +126,30 @@ class Mistral:
             )
 
         except RuntimeError as e:
-
             traceback.print_exc()
-
             if "out of memory" in str(e):
-                # Determine which devices the model is on:
-                # Transformers v4.35+ stores its placement in hf_device_map
-                device_map = getattr(self.model, "hf_device_map", None)
-                # Fallback: if it's just on one device (legacy), wrap it into a dict
-                if device_map is None:
-                    # model.device might be a torch.device, or accelerator.device…
-                    device_map = {"": self.model.device}
-
-                used_per_device = {}
-                requested_per_device = {}
+                # gather memory stats
+                device_map = getattr(self.model, "hf_device_map", None) or {"": self.model.device}
+                used_per_device, requested_per_device = {}, {}
                 for name, dev in device_map.items():
-                    if dev.type == "cuda":
-                        idx = dev.index if dev.index is not None else 0
+                    if dev.type=="cuda":
+                        idx = dev.index or 0
                         used = torch.cuda.memory_allocated(idx)
-                        # Approximate “requested” as whatever new allocation we tried;
-                        # you might refine this calculation based on your actual tensors
-                        requested = (
-                            max_tokens
-                            * inputs["input_ids"].element_size()
-                            * inputs["input_ids"].nelement()
-                        )
-                        used_per_device[f"cuda:{idx}"] = used
-                        requested_per_device[f"cuda:{idx}"] = requested
-                        # Clear cache per device
+                        requested = max_tokens * input_ids.element_size() * input_ids.nelement()
+                        used_per_device[f"cuda:{idx}"]=used
+                        requested_per_device[f"cuda:{idx}"]=requested
                         torch.cuda.empty_cache(idx)
                     else:
                         used_per_device[str(dev)] = 0
                         requested_per_device[str(dev)] = 0
-
-                raise OutOfMemoryError(
-                    device_or_devices=list(used_per_device.keys()),
-                    used=used_per_device,
-                    requested=requested_per_device,
-                )
+                raise OutOfMemoryError(device_or_devices=list(used_per_device.keys()), used=used_per_device, requested=requested_per_device)
             raise
 
-        # Check unfinished response
-        gen_len = output.shape[1] - input_ids.shape[1]
+        gen_len = output.shape[1] - total_input_tokens
         if gen_len >= max_tokens:
-            generated_ids = output[0][input_ids.shape[1] :]
+            generated_ids = output[0][total_input_tokens:]
             debug_text = self.tokenizer.decode(generated_ids, skip_special_tokens=False)
-            raise UnfinishedResponseError(
-                max_new_tokens=max_tokens, generation=debug_text
-            )
+            raise UnfinishedResponseError(max_new_tokens=max_tokens, generation=debug_text)
 
         decoded = self.tokenizer.decode(output[0], skip_special_tokens=True)
-        reply = decoded.split("[/INST]")[-1].strip()
-        return reply
+        return decoded.split("[/INST]")[-1].strip()
