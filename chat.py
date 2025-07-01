@@ -7,7 +7,10 @@ from run_mistral import Mistral, UnfinishedResponseError, OutOfTokensError, OutO
 TOP_P=0.9
 TEMPERATURE=0.6
 
-mistral = Mistral(quantization="8bit")
+mistral = Mistral(quantization="8bit", device_ids=None) # Use all available devices.
+
+mistral.report_memory_usage()
+
 
 def main():
     messages = []

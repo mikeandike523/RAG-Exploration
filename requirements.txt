@@ -1,4 +1,4 @@
-
+# App Requiremments
 
 transformers[accelerate]
 prompt_toolkit
@@ -7,6 +7,8 @@ setuptools
 bitsandbytes
 protobuf
 sentencepiece
+pynvml
 
-# for downloading the model
+
+# Dev Requirements
 huggingface_hub[cli]

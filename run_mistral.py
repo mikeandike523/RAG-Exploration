@@ -2,10 +2,21 @@ from dataclasses import dataclass
 from typing import List, Literal, Optional, TypedDict, Union
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 import torch
+import pynvml
+import psutil
 from collections import defaultdict
 from termcolor import colored
-import traceback
+from torch.nn.utils.rnn import pad_sequence
 
+# Static constants
+DEFAULT_GPU_HEADROOM_PCT = 0.1          # reserve 10% of each GPU for activations, cache, allocator
+DEFAULT_OS_RAM_RESERVE_GB = 2           # reserve 2GB of system RAM for OS/processes
+
+# Pre-init NVML once at module load
+try:
+    pynvml.nvmlInit()
+except Exception:
+    pass
 
 MISTRAL_7B_INSTRUCT = "mistralai/Mistral-7B-Instruct-v0.1"
 
@@ -21,12 +32,10 @@ bnb_config_4bit = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.float16,
 )
 
-
 @dataclass
 class Message:
     role: Literal["user", "assistant", "system"]
     content: str
-
 
 class CompletionRequest(TypedDict):
     messages: List[Message]
@@ -34,12 +43,16 @@ class CompletionRequest(TypedDict):
     max_tokens: Optional[int]
     temperature: Optional[float]
 
+class BatchCompletionRequest(TypedDict):
+    conversations: List[List[Message]]
+    top_p: Optional[float]
+    max_tokens: Optional[int]
+    temperature: Optional[float]
 
 @dataclass
 class OutOfTokensError(Exception):
     budget: int
     total_tokens: int
-
 
 @dataclass
 class OutOfMemoryError(Exception):
@@ -47,109 +60,165 @@ class OutOfMemoryError(Exception):
     used: dict
     requested: dict
 
-
 @dataclass
 class UnfinishedResponseError(Exception):
     max_new_tokens: int
     generation: str
 
-
 class Mistral:
-
     def __init__(
         self,
         model_id: str = MISTRAL_7B_INSTRUCT,
-        quantization: Optional[Literal["8bit", "4bit"]]=None,
+        quantization: Optional[Literal["8bit", "4bit"]] = None,
         default_temperature: float = 0.6,
         default_top_p: float = 0.9,
         pad_margin: int = 2,
+        device_ids: Optional[Union[int, List[int]]] = None,
+        gpu_headroom_pct: float = DEFAULT_GPU_HEADROOM_PCT,
+        ram_budget_gb: Optional[int] = None,
     ):
-        self.model_id = model_id
-        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
-        if quantization is not None:
-            model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                device_map="auto",
-                torch_dtype=torch.float16,
-                quantization_config=(bnb_config_4bit if quantization=="4bit" else bnb_config_8bit),
-            )
+        """
+        Initialize Mistral model with explicit GPU and CPU budgeting.
+
+        device_ids:
+          - None: use all available GPUs
+          - int: use specified GPU
+          - List[int]: use specified GPUs
+
+        gpu_headroom_pct: fraction of each GPU to reserve for activations and overhead
+        ram_budget_gb: max GB to use on CPU RAM; None = full system RAM minus OS reserve
+        """
+        # Detect GPUs
+        total_gpus = torch.cuda.device_count()
+        if total_gpus == 0:
+            raise RuntimeError("No CUDA-capable GPUs detected. Cannot initialize model on GPU.")
+        if device_ids is None:
+            ids = list(range(total_gpus))
         else:
-            model = AutoModelForCausalLM.from_pretrained(
-                model_id, device_map="auto", torch_dtype=torch.float16
-            )
-        self.model = model
+            ids = [device_ids] if isinstance(device_ids, int) else list(device_ids)
+            invalid = [i for i in ids if i < 0 or i >= total_gpus]
+            if invalid:
+                raise ValueError(f"Invalid device IDs: {invalid}")
+
+        # Build max_memory budget dict with integer GPU keys
+        budgets = {}
+        for idx in ids:
+            handle = pynvml.nvmlDeviceGetHandleByIndex(idx)
+            total_gb = pynvml.nvmlDeviceGetMemoryInfo(handle).total // (1024**3)
+            headroom = max(1, int(total_gb * gpu_headroom_pct))
+            avail = total_gb - headroom
+            if avail <= 0:
+                raise ValueError(
+                    f"Computed GPU headroom {headroom}GB >= GPU {idx} total {total_gb}GB"
+                )
+            # Use integer keys to match Accelerate's expected device identifiers
+            budgets[idx] = f"{avail}GB"
+
+        # CPU RAM budget
+        system_ram_gb = psutil.virtual_memory().total // (1024**3)
+        if ram_budget_gb is None:
+            cpu_budget = max(0, system_ram_gb - DEFAULT_OS_RAM_RESERVE_GB)
+        else:
+            cpu_budget = min(ram_budget_gb, system_ram_gb - DEFAULT_OS_RAM_RESERVE_GB)
+        budgets["cpu"] = f"{cpu_budget}GB"
+
+        # Load tokenizer and model with explicit budgets
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+        self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+        load_kwargs = {
+            "device_map": "auto",
+            "torch_dtype": torch.float16,
+            "max_memory": budgets,
+        }
+        if quantization:
+            qconfig = bnb_config_4bit if quantization == "4bit" else bnb_config_8bit
+            load_kwargs["quantization_config"] = qconfig
+        self.model = AutoModelForCausalLM.from_pretrained(model_id, **load_kwargs)
+
+        # Store settings
         self.default_temperature = default_temperature
         self.default_top_p = default_top_p
         self.pad_margin = pad_margin
-        # load config limits
         cfg = self.model.config
         self.hard_limit = getattr(cfg, "max_position_embeddings", None)
         self.sliding_window = getattr(cfg, "sliding_window", None)
 
     def _compute_max_new_tokens(self, input_ids_len: int) -> int:
-        # Prefer sliding window heuristic if available
         budget = self.sliding_window or self.hard_limit
         if budget is None:
             raise ValueError("Model configuration missing context limits.")
         return max(0, budget - input_ids_len - self.pad_margin)
 
-    def completion(self, payload: CompletionRequest) -> str:
-        messages = payload["messages"]
-        top_p = payload.get("top_p", self.default_top_p)
-        max_tokens = payload.get("max_tokens", None)
+    def _batch_generate(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        max_tokens: int,
+        top_p: float,
+        temperature: float,
+    ) -> torch.Tensor:
+        return self.model.generate(
+            input_ids,
+            attention_mask=attention_mask,
+            do_sample=True,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_tokens,
+            pad_token_id=self.tokenizer.pad_token_id,
+            eos_token_id=self.tokenizer.eos_token_id,
+        )
 
-        temperature = payload.get("temperature", self.default_temperature)
-
-        formatted_text = self.tokenizer.apply_chat_template(messages, tokenize=False)
-        inputs = self.tokenizer(formatted_text, return_tensors="pt")
-        input_ids = inputs["input_ids"]
-        total_input_tokens = input_ids.shape[1]
-
-        # Check against hard limit
-        if self.hard_limit and total_input_tokens > self.hard_limit:
-            raise OutOfTokensError(budget=self.hard_limit, total_tokens=total_input_tokens)
-
-        # Compute max_new_tokens if not provided
-        if max_tokens is None:
-            max_tokens = self._compute_max_new_tokens(total_input_tokens)
-
+    def report_memory_usage(self) -> None:
         try:
-            output = self.model.generate(
-                input_ids.to(self.model.device),
-                max_new_tokens=max_tokens,
-                do_sample=True,
-                temperature=temperature,
-                top_p=top_p,
-                pad_token_id=self.tokenizer.eos_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-                attention_mask=inputs["attention_mask"].to(self.model.device),
-            )
+            for i in range(torch.cuda.device_count()):
+                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                reserved = torch.cuda.memory_reserved(i) / 2**30
+                allocated = torch.cuda.memory_allocated(i) / 2**30
+                print(
+                    f"GPU {i}: driver_used={mem.used/2**30:.2f}GB, "
+                    f"reserved={reserved:.2f}GB, allocated={allocated:.2f}GB"
+                )
+            self._report_model_shard_distribution()
+        except Exception as e:
+            print(colored(f"Memory report error: {e}", "red"))
 
-        except RuntimeError as e:
-            traceback.print_exc()
-            if "out of memory" in str(e):
-                # gather memory stats
-                device_map = getattr(self.model, "hf_device_map", None) or {"": self.model.device}
-                used_per_device, requested_per_device = {}, {}
-                for name, dev in device_map.items():
-                    if dev.type=="cuda":
-                        idx = dev.index or 0
-                        used = torch.cuda.memory_allocated(idx)
-                        requested = max_tokens * input_ids.element_size() * input_ids.nelement()
-                        used_per_device[f"cuda:{idx}"]=used
-                        requested_per_device[f"cuda:{idx}"]=requested
-                        torch.cuda.empty_cache(idx)
-                    else:
-                        used_per_device[str(dev)] = 0
-                        requested_per_device[str(dev)] = 0
-                raise OutOfMemoryError(device_or_devices=list(used_per_device.keys()), used=used_per_device, requested=requested_per_device)
-            raise
+    def _report_model_shard_distribution(self) -> None:
+        device_params = defaultdict(lambda: {"count": 0, "bytes": 0})
+        for _, p in self.model.named_parameters():
+            dev = str(p.device)
+            device_params[dev]["count"] += p.numel()
+            device_params[dev]["bytes"] += p.numel() * p.element_size()
+        for dev, s in device_params.items():
+            print(f"{dev}: {s['bytes']/2**30:.2f}GB in {s['count']} params")
 
-        gen_len = output.shape[1] - total_input_tokens
-        if gen_len >= max_tokens:
-            generated_ids = output[0][total_input_tokens:]
-            debug_text = self.tokenizer.decode(generated_ids, skip_special_tokens=False)
-            raise UnfinishedResponseError(max_new_tokens=max_tokens, generation=debug_text)
+    def completion(self, payload: CompletionRequest) -> str:
+        batch = BatchCompletionRequest(
+            conversations=[payload["messages"]],
+            top_p=payload.get("top_p"),
+            max_tokens=payload.get("max_tokens"),
+            temperature=payload.get("temperature"),
+        )
+        return self.batch_completion(batch)[0]
 
-        decoded = self.tokenizer.decode(output[0], skip_special_tokens=True)
-        return decoded.split("[/INST]")[-1].strip()
+    def batch_completion(self, payload: BatchCompletionRequest) -> List[str]:
+        texts = [self.tokenizer.apply_chat_template(c, tokenize=False) for c in payload["conversations"]]
+        encoded = [self.tokenizer(t, return_tensors="pt") for t in texts]
+        ids = [e["input_ids"].squeeze(0) for e in encoded]
+        masks = [e["attention_mask"].squeeze(0) for e in encoded]
+        padded_ids = pad_sequence(ids, batch_first=True, padding_value=self.tokenizer.pad_token_id)
+        padded_masks = pad_sequence(masks, batch_first=True, padding_value=0)
+        padded_ids = padded_ids.to(self.model.device)
+        padded_masks = padded_masks.to(self.model.device)
+
+        top_p = payload.get("top_p", self.default_top_p)
+        temperature = payload.get("temperature", self.default_temperature)
+        max_tokens = payload.get("max_tokens") or self._compute_max_new_tokens(padded_ids.size(1))
+
+        outputs = self._batch_generate(padded_ids, padded_masks, max_tokens, top_p, temperature)
+        return [
+            self.tokenizer.decode(o, skip_special_tokens=True)
+            .split("[/INST]")[-1]
+            .strip()
+            for o in outputs
+        ]
