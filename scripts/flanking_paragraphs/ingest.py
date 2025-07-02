@@ -13,10 +13,10 @@ from dotenv import dotenv_values
 
 # Load environment variables
 mysql_env = dotenv_values(os.path.join(
-    os.path.dirname(__file__), "servers", "mysql", ".env"
+    os.path.dirname(__file__) , ".." , "..", "servers", "mysql", ".env"
 ))
 qdrant_env = dotenv_values(os.path.join(
-    os.path.dirname(__file__), "servers", "qdrant", ".env"
+    os.path.dirname(__file__), ".." , "..", "servers", "qdrant", ".env"
 ))
 
 
