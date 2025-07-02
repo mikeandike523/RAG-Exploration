@@ -13,6 +13,11 @@ sentence_transformers
 mysql-connector-python
 qdrant-client
 python_dotenv
+vllm
+requests
+click
+mistral_common
+mistral_inference
 
 
 # Dev Requirements
