@@ -9,6 +9,8 @@ from termcolor import colored
 from torch.nn.utils.rnn import pad_sequence
 import re
 
+MODEL_ID = "mistralai/Mistral-Nemo-Instruct-2407"
+
 # Static constants
 DEFAULT_GPU_HEADROOM_PCT = 0.15          # reserve 15% of each GPU for activations, cache, allocator
 DEFAULT_OS_RAM_RESERVE_GB = 4           # reserve 4GB of system RAM for OS/processes
@@ -19,7 +21,6 @@ try:
 except Exception:
     pass
 
-MODEL_ID = "mistralai/Mistral-Nemo-Instruct-2407"
 
 bnb_config_8bit = BitsAndBytesConfig(
     load_in_4bit=False,
