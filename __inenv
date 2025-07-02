@@ -1,9 +1,28 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-dn="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+# Figure out the repo’s top‐level directory.
+# If this file isn’t inside a Git repo, this’ll fail.
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [[ -z "$repo_root" ]]; then
+  echo "Error: not inside a git repository." >&2
+  exit 1
+fi
 
-source "$dn/.venv/bin/activate"
+# Activate the virtualenv in $repo_root/.venv
+venv_dir="$repo_root/.venv"
+if [[ ! -f "$venv_dir/bin/activate" ]]; then
+  echo "Error: virtualenv not found at $venv_dir" >&2
+  exit 1
+fi
 
+# shellcheck source=/dev/null
+source "$venv_dir/bin/activate"
+
+export PYTHONPATH="$repo_root${PYTHONPATH:+:${PYTHONPATH}}"
+
+# Run the user’s command(s)
 "$@"
 
+# Deactivate when done.
 deactivate

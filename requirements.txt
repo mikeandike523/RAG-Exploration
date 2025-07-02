@@ -8,6 +8,11 @@ bitsandbytes
 protobuf
 sentencepiece
 pynvml
+pysbd
+sentence_transformers
+mysql-connector-python
+qdrant-client
+python_dotenv
 
 
 # Dev Requirements

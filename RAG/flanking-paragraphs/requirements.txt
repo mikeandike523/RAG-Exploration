@@ -1,5 +1,0 @@
-pysbd
-sentence_transformers
-mysql-connector-python
-qdrant-client
-python_dotenv
