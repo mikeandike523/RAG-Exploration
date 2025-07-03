@@ -22,3 +22,4 @@ mistral_inference
 
 # Dev Requirements
 huggingface_hub[cli]
+wcwidth
