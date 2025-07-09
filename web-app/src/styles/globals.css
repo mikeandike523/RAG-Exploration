@@ -1,0 +1,17 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  width: 100dvw;
+  height: 100dvh;
+  overflow: auto;
+}
+
+#__next {
+  width: 100dvw;
+  height: 100dvh;
+  overflow: auto;
+}
