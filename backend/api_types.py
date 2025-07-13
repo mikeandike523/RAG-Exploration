@@ -40,6 +40,11 @@ class FatalTaskError(Exception):
         super().__init__(message)
         self.cause = cause
 
+@dataclass
+class ClientMessage:
+    action: str
+    payload: Optional[Any] = None
+
 # 3) A simple context to wrap emits into the room
 class TaskContext:
     def __init__(self, room: str):

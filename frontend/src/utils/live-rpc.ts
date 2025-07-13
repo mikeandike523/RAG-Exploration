@@ -159,15 +159,15 @@ export default async function callLiveRoute<
         "fatal_error",
         (data: FatalErrorResponse<SerializableObject | void>) => {
           handlers.onFatalError?.(data);
-          reject(new Error(data.message));
           socket.disconnect();
+          reject(new Error(data.message));
         }
       );
       socket.on(
         "success",
         (data: SuccessResponse<SerializableObject | void>) => {
-          resolve(data.result as TRet);
           socket.disconnect();
+          resolve(data.result as TRet);
         }
       );
     });

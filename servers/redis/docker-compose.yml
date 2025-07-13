@@ -1,0 +1,12 @@
+services:
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    ports:
+      # maps container’s 6379 → host’s 6379 (you can change the left side if you like)
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:

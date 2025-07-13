@@ -3,3 +3,4 @@ __pycache__
 .venv
 debug
 test_texts
+bucket

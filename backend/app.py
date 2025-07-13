@@ -11,7 +11,7 @@ from dataclasses import dataclass, asdict
 from typing import Any, Callable, Dict
 import uuid
 from dotenv import dotenv_values
-from backend.api_types import TaskContext, FatalTaskError
+from backend.api_types import TaskContext, FatalTaskError, ClientMessage
 import os
 import traceback
 from termcolor import colored
@@ -25,9 +25,15 @@ env_vars = dotenv_values(os.path.join(os.path.dirname(__file__), '.env'))
 if "SECRET_KEY" not in env_vars:
     raise ValueError("Missing SECRET_KEY environment variable")
 
+    from dotenv import dotenv_values
+# …
+
+redis_env_vars = dotenv_values(os.path.join(os.path.dirname(__file__,"..","servers","redis",".env")))
+redis_url = f"redis://{env['REDIS_HOST']}:{env['REDIS_PORT']}/{env['REDIS_DB']}"
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = env_vars['SECRET_KEY']
-socketio = SocketIO(app, async_mode='eventlet')
+socketio = SocketIO(app, async_mode='eventlet', message_queue=redis_url)
 
 TASKS: Dict[str, Callable[[TaskContext, dict], Any]] = {}
 
@@ -61,7 +67,7 @@ def _run_task(task_name: str, task_id: str, args: dict):
     handler = TASKS[task_name]
 
     try:
-        result = handler(ctx, args)
+        result = handler(ctx, args, active_task_client_handlers)
         ctx.emit_success(result)
     except FatalTaskError as exc:
         ctx.emit_fatal_error(str(exc), cause=exc.cause)

@@ -18,3 +18,12 @@ docker compose up -d
 
 cd ..
 
+cd redis
+
+docker compose down -v
+docker compose up -d
+
+cd ..
+
+echo "All services have been started successfully!"
+
