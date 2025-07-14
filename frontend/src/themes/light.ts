@@ -7,8 +7,8 @@ const theme = {
                  text: 'hsl(117, 82%, 10%)',
             },
             header: {
-                bg: 'hsl(41, 86.9%, 62%)',
-                text: 'hsl(41, 86.9%, 10%)',
+                bg: 'hsl(117, 82%, 25%)',
+                text: 'white',
                 shadow: 'hsla(117, 82%, 0%, 0.25)',
             }
            

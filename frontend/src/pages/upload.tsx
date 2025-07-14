@@ -1,9 +1,10 @@
 import Head from "next/head";
-import { Div, H1, Li, P, Ul } from "style-props-html";
-import { useState, useRef, DragEvent } from "react";
+import { DragEvent, useRef, useState } from "react";
+import { Button, Div, H1, P, Span } from "style-props-html";
+import { MdCloudUpload } from "react-icons/md";
 
 import theme from "@/themes/light";
-import emojis from "@/utils/emojis";
+import { css } from "@emotion/react";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 const ALLOWED_TYPES = ["text/plain"]; // .txt files
@@ -109,18 +110,20 @@ export default function Home() {
           <Div
             borderRadius="0 0 1rem 1rem"
             color={theme.colors.card.body.text}
-            width="100%"
+            width="75vw"
             padding="1rem"
             display="grid"
             gridTemplateColumns="auto 1fr"
           >
-            <Div 
-            
-            transition="width 0.3s ease-in-out"
-            width={
-              isUploading? "auto" : "75vw"
-
-            } display="flex" flexDirection="column" alignItems="center" justifyContent="center">
+            <Div
+              transition="width 0.3s ease-in-out"
+              width={isUploading ? "auto" : "calc(75vw - 2 * 0.5rem)"}
+              display="flex"
+              flexDirection="column"
+              alignItems="center"
+              justifyContent="center"
+              gap="0.5rem"
+            >
               {/* Hidden file input */}
               <input
                 type="file"
@@ -144,29 +147,70 @@ export default function Home() {
                 background="white"
                 padding="0.25rem"
                 maxWidth="30em"
+               position="relative"
               >
                 <Div
                   width="100%"
-                  fontSize="1.25rem"
+                  fontSize="2rem"
                   border="2px dashed black"
                   borderRadius="0.5rem"
-                  padding="0.25rem"
+                  padding="0.5rem"
                 >
                   {file ? (
-                    <div>
-                      <p>{`Selected file: ${file.name}`}</p>
-                      <p>{`Size: ${(file.size / (1024 * 1024)).toFixed(
-                        2
-                      )} MB`}</p>
-                    </div>
+                    <Div>
+                      <P width="100%" textAlign="center">
+                        {file.name}
+                      </P>
+                      <P width="100%" textAlign="center" fontSize="1rem">{`${(
+                        file.size /
+                        (1024 * 1024)
+                      ).toFixed(2)} MB`}</P>
+                    </Div>
                   ) : (
-                    <Div width="100%" textAlign="center">
+                    <Div fontSize="1.25rem" width="100%" textAlign="center">
                       <P>Drag and drop a file here.</P>
                       <P>- or -</P>
                       <P>Click here to open file browser.</P>
                     </Div>
                   )}
                 </Div>
+                {
+                  file && <Button position="absolute"
+                  top={0}
+                  right={0}
+                  borderRadius = "0 0.5rem 0 0.5rem"
+                  background="red"
+                  border="none"
+                  display="flex"
+                  flexDirection="column"
+                  alignItems="center"
+                  justifyContent="center"
+                  width="2rem"
+                  height="2rem"
+                  color="white"
+                  transformOrigin="center"
+                  cursor="pointer"
+                  transition="transform 0.15s ease-in-out"
+                  css={css`
+                    transform: scale(1);
+                    &:hover {
+                      transform: scale(1.05);
+                    }
+                    &:active {
+                      transform: scale(0.95);
+                    }
+                    `}
+                    onClick={(e)=>{
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setFile(null);
+                    }}
+                  >
+
+                   <Span fontSize="1.5rem">&times;</Span>
+
+                  </Button>
+                }
               </Div>
 
               {error && (
@@ -175,24 +219,25 @@ export default function Home() {
 
               {/* File details and upload button */}
               {file && (
-                <Div marginTop="1rem">
-                  <button onClick={uploadFile}>Upload File</button>
-                </Div>
+                <Button
+                  display="flex"
+                  flexDirection="row"
+                  alignItems="center"
+                  gap="0.5rem"
+                  onClick={uploadFile}
+                  padding="0.5rem"
+                  borderRadius="0.5rem"
+                >
+                  <MdCloudUpload fontSize="1.25rem" />
+                  <Span fontSize="1.25rem">Upload</Span>
+                </Button>
               )}
-
-              <Ul fontSize="1.25rem" marginTop="2rem">
-                <Li>{`${emojis.bullet} 20MB Max`}</Li>
-                <Li>{`${emojis.bullet} Supported Files:`}</Li>
-                <Li>
-                  <Ul marginLeft="1.25rem">
-                    <Li>{`${emojis.bullet} Text Files (.txt)`}</Li>
-                    <Li>{`${emojis.bullet} PDF Files (.pdf) (TODO)`}</Li>
-                    <Li>{`${emojis.bullet} Word Files (.docx) (TODO)`}</Li>
-                    <Li>{`${emojis.bullet} Open Office Files (.odt) (TODO)`}</Li>
-                    <Li>{`${emojis.bullet} Rich Text Files (.rtf) (TODO)`}</Li>
-                  </Ul>
-                </Li>
-              </Ul>
+              {!file && (
+                <>
+                  <P fontSize="1.25rem">20MB Maximum</P>
+                  <P fontSize="1.25rem">.txt, .pdf, .docx, .odt, .rtf</P>
+                </>
+              )}
             </Div>
             <Div></Div>
           </Div>
