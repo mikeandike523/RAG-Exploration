@@ -1,10 +1,6 @@
 import eventlet
-# 1) Monkey‐patch for Eventlet
 eventlet.monkey_patch()
 
-
-
-# app.py
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, join_room
 from dataclasses import dataclass, asdict
@@ -16,53 +12,74 @@ import os
 import traceback
 from termcolor import colored
 
-from backend.tasks.version import version_task
-from backend.tasks.progress_test import progress_test_task
-
+from backend.short_tasks.files.upload.new_object import task_new_object
 
 env_vars = dotenv_values(os.path.join(os.path.dirname(__file__), '.env'))
 
 if "SECRET_KEY" not in env_vars:
     raise ValueError("Missing SECRET_KEY environment variable")
 
-    from dotenv import dotenv_values
-# …
-
-redis_env_vars = dotenv_values(os.path.join(os.path.dirname(__file__,"..","servers","redis",".env")))
-redis_url = f"redis://{env['REDIS_HOST']}:{env['REDIS_PORT']}/{env['REDIS_DB']}"
+redis_env_vars = dotenv_values(os.path.join(os.path.dirname(__file__),"..","servers","redis",".env"))
+redis_url = f"redis://{redis_env_vars['REDIS_HOST']}:{redis_env_vars['REDIS_PORT']}/{redis_env_vars['REDIS_DB']}"
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = env_vars['SECRET_KEY']
 socketio = SocketIO(app, async_mode='eventlet', message_queue=redis_url)
 
-TASKS: Dict[str, Callable[[TaskContext, dict], Any]] = {}
+LONG_TASKS: Dict[str, Callable[[TaskContext, Any], Any]] = {}
 
-def register_task(name: str, fn: Callable[[TaskContext, dict], Any]):
-    TASKS[name] = fn
+def register_long_task(name: str, fn: Callable[[TaskContext, dict], Any]):
+    LONG_TASKS[name] = fn
 
-register_task('version', version_task)
-register_task('progress_test', progress_test_task)
+SHORT_TASKS: Dict[str, Callable[[Any], Any]] = {}
 
-# 6) HTTP endpoint to dispatch tasks
+def register_short_task(name: str, fn: Callable[[Any], Any]):
+    SHORT_TASKS[name] = fn
+
+register_short_task('/files/upload/new-object', task_new_object)
+
+@app.route('/run', methods=['POST'])
+def run_short_task():
+    data = request.get_json(force=True)
+    task_name = data.get('task')
+    args = data.get('args', None)
+
+    if task_name not in SHORT_TASKS:
+        return jsonify({"error": f"Unknown task '{task_name}'"}), 400
+
+    handler = SHORT_TASKS[task_name]
+
+    try:
+        result = handler(args)
+    except FatalTaskError as exc:
+        if exc.cause is not None:
+            return jsonify({"message": str(exc), "cause": exc.cause}), 500
+        return jsonify({"message": str(exc)}), 500
+    except Exception as exc:
+        print(colored(f"Server error occured upon user request: {str(exc)}","red"))
+        print(colored(f"Traceback:","red"))
+        traceback.print_exc()
+        return jsonify({"error": "An unknown server error occurred. Please try again later."}), 500
+
+
+    return jsonify(result), 200    
+
 @app.route('/begin', methods=['POST'])
 def begin_task():
     data = request.get_json(force=True)
     task_name = data.get('task')
     args = data.get('args', None)
 
-    if task_name not in TASKS:
+    if task_name not in LONG_TASKS:
         return jsonify({"error": f"Unknown task '{task_name}'"}), 400
 
-    # Create an unguessable room ID
     task_id = f"{task_name}:{uuid.uuid4()}"
-    # Launch the task in background
-    socketio.start_background_task(_run_task, task_name, task_id, args)
+    socketio.start_background_task(_run_long_task, task_name, task_id, args)
 
     return jsonify({"task_id": task_id}), 202
 
+def _run_long_task(task_name: str, task_id: str, args: dict):
 
-# 7) Internal runner
-def _run_task(task_name: str, task_id: str, args: dict):
     ctx = TaskContext(room=task_id)
     handler = TASKS[task_name]
 
@@ -78,7 +95,6 @@ def _run_task(task_name: str, task_id: str, args: dict):
         traceback.print_exc()
 
 
-# 8) Socket.IO “join room” handler
 @socketio.on('join')
 def on_join(data):
     task_id = data.get('task_id')
