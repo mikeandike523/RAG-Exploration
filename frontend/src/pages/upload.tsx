@@ -1,34 +1,196 @@
+import React, { DragEvent, useEffect, useRef, useState } from "react";
 import Head from "next/head";
-import { DragEvent, useRef, useState } from "react";
 import { Button, Div, H1, P, Span } from "style-props-html";
 import { MdCloudUpload } from "react-icons/md";
-
 import theme from "@/themes/light";
 import { css } from "@emotion/react";
+import LoadingSpinnerOverlay from "@/components/LoadingSpinnerOverlay";
+import { v4 as uuidv4 } from "uuid";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
-const ALLOWED_TYPES = ["text/plain"]; // .txt files
+// const ALLOWED_TYPES = ["text/plain"]; // .txt files
+const ALLOWED_TYPES = {
+  "text/plain": {
+    description: "Plain Text",
+    extensions: ["txt"],
+  },
+};
+
+type TextMessage = {
+  kind: "string";
+  text: string;
+  backgroundColor?: string;
+  color?: string;
+  fontWeight?: "bold" | "normal";
+  fontStyle?: "italic" | "normal";
+  fontSize?: string;
+};
+
+type ProgressBarMessage = {
+  kind: "progressBar";
+  title: string;
+  unit?: string;
+  precision?: number;
+  showAsPercent: boolean;
+  max: number;
+  current: number;
+  titleStyle: {
+    backgroundColor?: string;
+    color?: string;
+    fontWeight?: "bold" | "normal";
+    fontStyle?: "italic" | "normal";
+    fontSize?: string;
+  };
+};
+
+type ProgressMessage = TextMessage | ProgressBarMessage;
+
+// Small components for rendering messages
+const MessageText: React.FC<{ message: TextMessage }> = ({ message }) => (
+  <Div
+    width="100%"
+    background={message.backgroundColor}
+    color={message.color}
+    fontWeight={message.fontWeight}
+    fontStyle={message.fontStyle}
+    fontSize={message.fontSize}
+    padding="0.5rem"
+  >
+    <P>{message.text}</P>
+  </Div>
+);
+
+const ProgressBar: React.FC<{ message: ProgressBarMessage }> = ({
+  message,
+}) => {
+  const percentText = message.showAsPercent
+    ? ((message.current / message.max) * 100).toFixed(message.precision ?? 0) +
+      "%"
+    : message.current.toFixed(message.precision ?? 0) + (message.unit || "");
+  const widthPercent = ((message.current / message.max) * 100).toFixed(2) + "%";
+
+  return (
+    <Div
+      width="100%"
+      padding="0.5rem"
+      display="flex"
+      flexDirection="column"
+      alignItems="flex-start"
+      justifyContent="flex-start"
+      gap="0.25rem"
+    >
+      <Div
+        width="100%"
+        background={message.titleStyle.backgroundColor}
+        color={message.titleStyle.color}
+        fontWeight={message.titleStyle.fontWeight}
+        fontStyle={message.titleStyle.fontStyle}
+        fontSize={message.titleStyle.fontSize}
+        // padding="0.25rem"
+        // borderRadius="0.25rem"
+      >
+        {message.title} - {percentText}
+      </Div>
+      <Div
+        width="100%"
+        background="#e0e0e0"
+        borderRadius="0.25rem"
+        height="1rem"
+      >
+        <Div
+          width={widthPercent}
+          background={message.titleStyle.color}
+          height="100%"
+          borderRadius="0.25rem"
+        />
+      </Div>
+    </Div>
+  );
+};
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
-
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadFinished, setUploadFinished] = useState(false);
+  const [uploadFailed, setUploadFailed] = useState(false);
+  const [progressMessages, setProgressMessages] = useState<
+    Map<string, ProgressMessage>
+  >(new Map());
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const progressContainerRef = useRef<HTMLDivElement>(null);
 
-  const handleFiles = (files: FileList) => {
+  // Scroll container when messages change
+  const scrollProgressContainerToBottom = () => {
+    const container = progressContainerRef.current;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    }
+  };
+
+  useEffect(() => {
+    scrollProgressContainerToBottom();
+  }, [progressMessages.size]);
+
+  // CRUD helpers via functional updates only
+  const clearProgressMessages = (): void => {
+    setProgressMessages(() => new Map());
+  };
+
+  const addProgressMessage = (message: ProgressMessage): string => {
+    const id = uuidv4();
+    setProgressMessages((prev) => {
+      const next = new Map(prev);
+      next.set(id, message);
+      return next;
+    });
+    return id;
+  };
+
+  const deleteProgressMessageById = (id: string): void => {
+    setProgressMessages((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const replaceMessageById = (
+    id: string,
+    newMessage: ProgressMessage
+  ): void => {
+    setProgressMessages((prev) => {
+      const next = new Map(prev);
+      next.set(id, newMessage);
+      return next;
+    });
+  };
+
+  const updateMessageById = (
+    id: string,
+    callback: (previous: ProgressMessage) => ProgressMessage
+  ): void => {
+    setProgressMessages((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(id);
+      if (!existing) return prev;
+      next.set(id, callback(existing));
+      return next;
+    });
+  };
+
+  // File input handlers
+  const handleFiles = (files: FileList): void => {
     const selected = files[0];
     if (!selected) return;
 
-    // Validate type
-    if (!ALLOWED_TYPES.includes(selected.type)) {
+    if (!Object.keys(ALLOWED_TYPES).includes(selected.type)) {
       setError("Unsupported file type. Please upload a .txt file.");
       setFile(null);
       return;
     }
 
-    // Validate size
     if (selected.size > MAX_FILE_SIZE) {
       setError("File is too large. Maximum allowed size is 20MB.");
       setFile(null);
@@ -53,17 +215,52 @@ export default function Home() {
   };
 
   // Skeleton for file upload
-  const uploadFile = async () => {
+  const uploadFile = async (): Promise<void> => {
     if (!file) return;
     try {
-      // TODO: implement upload logic, e.g.,
-      // const formData = new FormData();
-      // formData.append('file', file);
-      // const res = await fetch('/api/upload', { method: 'POST', body: formData });
-      // const result = await res.json();
+      setIsUploading(true);
+      setUploadFinished(false);
+      setUploadFailed(false);
       console.log("Uploading file...", file.name);
+      // Example progress updates:
+      const id = addProgressMessage({
+        kind: "progressBar",
+        title: "Uploading",
+        showAsPercent: true,
+        max: file.size,
+        current: 0,
+        precision: 0,
+        titleStyle: { color: "blue" },
+      });
+      // Simulate progress:
+      let uploaded = 0;
+      const chunk = file.size / 10;
+      while (uploaded < file.size) {
+        await new Promise((r) => setTimeout(r, 200));
+        uploaded = Math.min(uploaded + chunk, file.size);
+        updateMessageById(id, (m) => ({
+          ...(m as ProgressBarMessage),
+          current: uploaded,
+        }));
+      }
+      addProgressMessage({
+        kind: "string",
+        text: "Upload complete!",
+        color: "green",
+      });
+      setUploadFinished(true);
+      setUploadFailed(false);
     } catch (err) {
       console.error("Upload failed", err);
+      addProgressMessage({
+        kind: "string",
+        text: "Upload failed.",
+        color: "red",
+      });
+      setUploadFailed(true);
+      setUploadFinished(false);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -111,20 +308,20 @@ export default function Home() {
             borderRadius="0 0 1rem 1rem"
             color={theme.colors.card.body.text}
             width="75vw"
-            padding="1rem"
             display="grid"
-            gridTemplateColumns="auto 1fr"
+            gridTemplateColumns="auto auto"
           >
             <Div
-              transition="width 0.3s ease-in-out"
-              width={isUploading ? "auto" : "calc(75vw - 2 * 0.5rem)"}
               display="flex"
               flexDirection="column"
               alignItems="center"
               justifyContent="center"
               gap="0.5rem"
+              padding="1rem"
+              width={
+                isUploading || uploadFinished || uploadFailed ? "30vw" : "75vw"
+              }
             >
-              {/* Hidden file input */}
               <input
                 type="file"
                 accept=".txt"
@@ -132,114 +329,94 @@ export default function Home() {
                 style={{ display: "none" }}
                 onChange={(e) => handleFiles(e.target.files!)}
               />
-
-              {/* Drop zone */}
               <Div
                 onDrop={onDrop}
                 onDragOver={onDragOver}
                 onClick={onClickZone}
                 cursor="pointer"
                 width="100%"
+                maxWidth="30em"
                 display="flex"
                 alignItems="center"
                 justifyContent="center"
+                border="2px dashed black"
                 borderRadius="0.5rem"
+                padding="1rem"
                 background="white"
-                padding="0.25rem"
-                maxWidth="30em"
-               position="relative"
               >
-                <Div
-                  width="100%"
-                  fontSize="2rem"
-                  border="2px dashed black"
-                  borderRadius="0.5rem"
-                  padding="0.5rem"
-                >
-                  {file ? (
-                    <Div>
-                      <P width="100%" textAlign="center">
-                        {file.name}
-                      </P>
-                      <P width="100%" textAlign="center" fontSize="1rem">{`${(
-                        file.size /
-                        (1024 * 1024)
-                      ).toFixed(2)} MB`}</P>
-                    </Div>
-                  ) : (
-                    <Div fontSize="1.25rem" width="100%" textAlign="center">
-                      <P>Drag and drop a file here.</P>
-                      <P>- or -</P>
-                      <P>Click here to open file browser.</P>
-                    </Div>
-                  )}
-                </Div>
-                {
-                  file && <Button position="absolute"
-                  top={0}
-                  right={0}
-                  borderRadius = "0 0.5rem 0 0.5rem"
-                  background="red"
-                  border="none"
-                  display="flex"
-                  flexDirection="column"
-                  alignItems="center"
-                  justifyContent="center"
-                  width="2rem"
-                  height="2rem"
-                  color="white"
-                  transformOrigin="center"
-                  cursor="pointer"
-                  transition="transform 0.15s ease-in-out"
-                  css={css`
-                    transform: scale(1);
-                    &:hover {
-                      transform: scale(1.05);
-                    }
-                    &:active {
-                      transform: scale(0.95);
-                    }
-                    `}
-                    onClick={(e)=>{
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setFile(null);
-                    }}
-                  >
-
-                   <Span fontSize="1.5rem">&times;</Span>
-
-                  </Button>
-                }
+                {file ? (
+                  <Div textAlign="center">
+                    <P>{file.name}</P>
+                    <P>{(file.size / (1024 * 1024)).toFixed(2)} MB</P>
+                  </Div>
+                ) : (
+                  <Div textAlign="center">
+                    <P>Drag & drop a .txt file or click to browse</P>
+                    <P>20 MB Maximum</P>
+                    <P>
+                      {Object.values(ALLOWED_TYPES)
+                        .flatMap((t) => t.extensions)
+                        .map((ext) => `.${ext}`)
+                        .join(", ")}
+                    </P>
+                  </Div>
+                )}
               </Div>
 
-              {error && (
-                <p style={{ color: "red", marginTop: "1rem" }}>{error}</p>
-              )}
-
-              {/* File details and upload button */}
               {file && (
                 <Button
+                  onClick={uploadFile}
+                  disabled={isUploading || uploadFinished || uploadFailed}
                   display="flex"
-                  flexDirection="row"
                   alignItems="center"
                   gap="0.5rem"
-                  onClick={uploadFile}
-                  padding="0.5rem"
+                  padding="0.5rem 1rem"
                   borderRadius="0.5rem"
+                  position="relative"
                 >
-                  <MdCloudUpload fontSize="1.25rem" />
-                  <Span fontSize="1.25rem">Upload</Span>
+                  <MdCloudUpload />
+                  <Span>
+                    {isUploading
+                      ? "Uploading..."
+                      : uploadFailed
+                      ? "Upload Failed."
+                      : uploadFinished
+                      ? "Upload Complete."
+                      : "Upload"}
+                  </Span>
+                  {isUploading && <LoadingSpinnerOverlay size="1rem" />}
                 </Button>
               )}
-              {!file && (
-                <>
-                  <P fontSize="1.25rem">20MB Maximum</P>
-                  <P fontSize="1.25rem">.txt, .pdf, .docx, .odt, .rtf</P>
-                </>
-              )}
+              {error && <P color="red">{error}</P>}
             </Div>
-            <Div></Div>
+
+            <Div
+              width={
+                isUploading || uploadFinished || uploadFailed ? "45vw" : "0"
+              }
+              transition="width 0.3s ease-in-out"
+              ref={progressContainerRef}
+              overflowY="auto"
+              padding="1rem"
+              display="flex"
+              flexDirection="column"
+              gap="0.5rem"
+            >
+              {[...progressMessages.entries()].map(([id, msg]) => (
+                <Div
+                  background="white"
+                  padding="0.25rem"
+                  boxShadow={`4px 4px 4px 0px ${theme.colors.card.body.shadow}`}
+                  borderRadius="0.5rem"
+                >
+                  {msg.kind === "string" ? (
+                    <MessageText key={id} message={msg} />
+                  ) : (
+                    <ProgressBar key={id} message={msg} />
+                  )}
+                </Div>
+              ))}
+            </Div>
           </Div>
         </Div>
       </Div>
