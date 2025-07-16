@@ -1,6 +1,8 @@
 from typing import Any, Optional, Union, Callable
 from dataclasses import dataclass
 
+import mysql.connector
+
 
 # 2) Define your response dataclasses
 @dataclass
@@ -73,3 +75,9 @@ class TaskContext:
     def emit_warning(self, message: str, extra: Optional[Any] = None):
         payload = WarningResponse(message=message,extra=extra)
         socketio.emit('warning', asdict(payload), room=self.room)
+        
+
+@dataclass
+class AppResources:
+    mysql_conn: mysql.connector.MySQLConnection
+    bucket_path: str

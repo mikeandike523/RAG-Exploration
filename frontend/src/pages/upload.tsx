@@ -1,14 +1,34 @@
-import React, { DragEvent, useEffect, useRef, useState } from "react";
 import Head from "next/head";
-import { Button, Div, H1, P, Span } from "style-props-html";
+import React, {
+  ChangeEvent,
+  DragEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { MdCloudUpload } from "react-icons/md";
-import theme from "@/themes/light";
-import { css } from "@emotion/react";
-import LoadingSpinnerOverlay from "@/components/LoadingSpinnerOverlay";
+import {
+  Button,
+  Div,
+  H1,
+  Input,
+  Label,
+  P,
+  Span,
+  Textarea,
+} from "style-props-html";
 import { v4 as uuidv4 } from "uuid";
 
+import LoadingSpinnerOverlay from "@/components/LoadingSpinnerOverlay";
+import theme from "@/themes/light";
+import { callRoute } from "@/utils/rpc";
+
+// Just development for now,
+// In the future, may need a tunnel
+const endpoint = "http://localhost:5000";
+
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
-// const ALLOWED_TYPES = ["text/plain"]; // .txt files
+
 const ALLOWED_TYPES = {
   "text/plain": {
     description: "Plain Text",
@@ -45,7 +65,6 @@ type ProgressBarMessage = {
 
 type ProgressMessage = TextMessage | ProgressBarMessage;
 
-// Small components for rendering messages
 const MessageText: React.FC<{ message: TextMessage }> = ({ message }) => (
   <Div
     width="100%"
@@ -86,8 +105,6 @@ const ProgressBar: React.FC<{ message: ProgressBarMessage }> = ({
         fontWeight={message.titleStyle.fontWeight}
         fontStyle={message.titleStyle.fontStyle}
         fontSize={message.titleStyle.fontSize}
-        // padding="0.25rem"
-        // borderRadius="0.25rem"
       >
         {message.title} - {percentText}
       </Div>
@@ -117,11 +134,13 @@ export default function Home() {
   const [progressMessages, setProgressMessages] = useState<
     Map<string, ProgressMessage>
   >(new Map());
+  const [documentTitle, setDocumentTitle] = useState("");
+  const [documentAuthor, setDocumentAuthor] = useState("");
+  const [documentDescription, setDocumentDescription] = useState("");
 
   const inputRef = useRef<HTMLInputElement>(null);
   const progressContainerRef = useRef<HTMLDivElement>(null);
 
-  // Scroll container when messages change
   const scrollProgressContainerToBottom = () => {
     const container = progressContainerRef.current;
     if (container) {
@@ -133,7 +152,6 @@ export default function Home() {
     scrollProgressContainerToBottom();
   }, [progressMessages.size]);
 
-  // CRUD helpers via functional updates only
   const clearProgressMessages = (): void => {
     setProgressMessages(() => new Map());
   };
@@ -180,13 +198,24 @@ export default function Home() {
     });
   };
 
-  // File input handlers
   const handleFiles = (files: FileList): void => {
     const selected = files[0];
     if (!selected) return;
 
+    if(!selected.name.includes(".")) {
+      setError("Invalid file name. Please include a valid file extension.");
+      setFile(null);
+      return;
+    }
+
+    if (!Object.values(ALLOWED_TYPES).flatMap(t=>t.extensions).includes(selected.name.split(".").pop()??'')) {
+      setError(`Unsupported file extension ${selected.name.split('.').pop()??''})`);
+      setFile(null);
+      return;
+    }
+
     if (!Object.keys(ALLOWED_TYPES).includes(selected.type)) {
-      setError("Unsupported file type. Please upload a .txt file.");
+      setError(`Unsupported file type ${selected.type}.`);
       setFile(null);
       return;
     }
@@ -199,6 +228,9 @@ export default function Home() {
 
     setError(null);
     setFile(selected);
+    setDocumentTitle("");
+    setDocumentAuthor("");
+    setDocumentDescription("");
   };
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -221,9 +253,14 @@ export default function Home() {
       setIsUploading(true);
       setUploadFinished(false);
       setUploadFailed(false);
-      console.log("Uploading file...", file.name);
+
+      addProgressMessage({
+        kind: "string",
+        text: "Uploading...",
+      });
+
       // Example progress updates:
-      const id = addProgressMessage({
+      const progressBarId = addProgressMessage({
         kind: "progressBar",
         title: "Uploading",
         showAsPercent: true,
@@ -233,15 +270,46 @@ export default function Home() {
         titleStyle: { color: "blue" },
       });
       // Simulate progress:
-      let uploaded = 0;
-      const chunk = file.size / 10;
-      while (uploaded < file.size) {
-        await new Promise((r) => setTimeout(r, 200));
-        uploaded = Math.min(uploaded + chunk, file.size);
-        updateMessageById(id, (m) => ({
-          ...(m as ProgressBarMessage),
-          current: uploaded,
-        }));
+      // let uploaded = 0;
+      // const chunk = file.size / 10;
+      // while (uploaded < file.size) {
+      //   await new Promise((r) => setTimeout(r, 200));
+      //   uploaded = Math.min(uploaded + chunk, file.size);
+      //   updateMessageById(id, (m) => ({
+      //     ...(m as ProgressBarMessage),
+      //     current: uploaded,
+      //   }));
+      // }
+
+      addProgressMessage({
+        kind: "string",
+        text: "Creating object...",
+      });
+
+      const objectId = await callRoute(endpoint, "/files/upload/new-object", {
+        name: file.name,
+        mime_type: file.type,
+        size: file.size,
+      });
+
+      addProgressMessage({
+        kind: "string",
+        text: `Created object with id ${objectId}`,
+      });
+
+      const reader = file.stream().getReader();
+      let offset = 0;
+
+      async function onChunk(chunkBlob: Blob, offset: number) {}
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunkBlob = new Blob([value]);
+        await onChunk(chunkBlob, offset);
+
+        offset += value?.length ?? 0;
       }
       addProgressMessage({
         kind: "string",
@@ -362,7 +430,42 @@ export default function Home() {
                   </Div>
                 )}
               </Div>
-
+              {file && (
+                <Div width="100%" maxWidth="30em">
+                  <Label width="100%">
+                    <P>Title*:</P>
+                    <Input
+                      disabled={isUploading || uploadFinished || uploadFailed}
+                      width="100%"
+                      type="text"
+                      value={documentTitle}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                        setDocumentTitle(e.target.value)
+                      }
+                    />
+                  </Label>
+                  <Label width="100%">
+                    <P>Author*:</P>
+                    <Input
+                      disabled={isUploading || uploadFinished || uploadFailed}
+                      width="100%"
+                      type="text"
+                      value={documentTitle}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                        setDocumentTitle(e.target.value)
+                      }
+                    />
+                  </Label>
+                  <Label width="100%">
+                    <P>Description*:</P>
+                    <Textarea
+                      disabled={isUploading || uploadFinished || uploadFailed}
+                      width="100%"
+                      rows={3}
+                    />
+                  </Label>
+                </Div>
+              )}
               {file && (
                 <Button
                   onClick={uploadFile}

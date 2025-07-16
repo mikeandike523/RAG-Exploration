@@ -7,12 +7,16 @@ from dataclasses import dataclass, asdict
 from typing import Any, Callable, Dict
 import uuid
 from dotenv import dotenv_values
-from backend.api_types import TaskContext, FatalTaskError, ClientMessage
+from backend.api_types import TaskContext, FatalTaskError, ClientMessage, AppResources
 import os
 import traceback
 from termcolor import colored
+from mysql.connector
+from src.utils.project_structure import get_project_root
 
 from backend.short_tasks.files.upload.new_object import task_new_object
+
+project_root = get_project_root()
 
 env_vars = dotenv_values(os.path.join(os.path.dirname(__file__), '.env'))
 
@@ -22,21 +26,36 @@ if "SECRET_KEY" not in env_vars:
 redis_env_vars = dotenv_values(os.path.join(os.path.dirname(__file__),"..","servers","redis",".env"))
 redis_url = f"redis://{redis_env_vars['REDIS_HOST']}:{redis_env_vars['REDIS_PORT']}/{redis_env_vars['REDIS_DB']}"
 
+mysql_env_vars = dotenv_values(os.path.join(os.path.dirname(__file__), "..", "servers", "mysql", ".env"))
+mysql_conn = mysql.connector.connect(
+    host=mysql_env_vars.get('MYSQL_HOST', 'localhost'),
+    port=int(mysql_env_vars.get('MYSQL_PORT', 3306)),
+    user=mysql_env_vars['MYSQL_USER'],
+    password=mysql_env_vars['MYSQL_PASSWORD'],
+    database=mysql_env_vars['MYSQL_DATABASE'],
+)
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = env_vars['SECRET_KEY']
 socketio = SocketIO(app, async_mode='eventlet', message_queue=redis_url)
 
-LONG_TASKS: Dict[str, Callable[[TaskContext, Any], Any]] = {}
+LONG_TASKS: Dict[str, Callable[[TaskContext, Any, AppResources], Any]] = {}
 
 def register_long_task(name: str, fn: Callable[[TaskContext, dict], Any]):
     LONG_TASKS[name] = fn
 
-SHORT_TASKS: Dict[str, Callable[[Any], Any]] = {}
+SHORT_TASKS: Dict[str, Callable[[Any, AppResources], Any]] = {}
 
 def register_short_task(name: str, fn: Callable[[Any], Any]):
     SHORT_TASKS[name] = fn
 
 register_short_task('/files/upload/new-object', task_new_object)
+
+
+app_resources = AppResources(
+    mysql_conn=mysql_conn
+    bucket_path=os.path.join(project_root, 'bucket')
+    )
 
 @app.route('/run', methods=['POST'])
 def run_short_task():
@@ -50,9 +69,12 @@ def run_short_task():
     handler = SHORT_TASKS[task_name]
 
     try:
-        result = handler(args)
+        result = handler(args, app_resources)
     except FatalTaskError as exc:
         if exc.cause is not None:
+            if isinstance(exc.cause, dict):
+                if "status" in exc.cause:
+                    return jsonify({"message": str(exc), "cause": exc.cause}), exc.cause["status"]
             return jsonify({"message": str(exc), "cause": exc.cause}), 500
         return jsonify({"message": str(exc)}), 500
     except Exception as exc:
@@ -84,7 +106,7 @@ def _run_long_task(task_name: str, task_id: str, args: dict):
     handler = TASKS[task_name]
 
     try:
-        result = handler(ctx, args, active_task_client_handlers)
+        result = handler(ctx, args, app_resources)
         ctx.emit_success(result)
     except FatalTaskError as exc:
         ctx.emit_fatal_error(str(exc), cause=exc.cause)
