@@ -22,6 +22,7 @@ import { v4 as uuidv4 } from "uuid";
 import LoadingSpinnerOverlay from "@/components/LoadingSpinnerOverlay";
 import theme from "@/themes/light";
 import { callRoute } from "@/utils/rpc";
+import { FileStreamer } from "@/utils/FileStreamer";
 
 // Just development for now,
 // In the future, may need a tunnel
@@ -36,7 +37,7 @@ const ALLOWED_TYPES = {
   },
 };
 
-const UPLOAD_CHUNK_SIZE= 16 * 1024 // 16 kB
+const MAX_UPLOAD_CHUNK_SIZE = 16 * 1024 // 16 kB
 
 type TextMessage = {
   kind: "string";
@@ -86,7 +87,7 @@ const ProgressBar: React.FC<{ message: ProgressBarMessage }> = ({
 }) => {
   const percentText = message.showAsPercent
     ? ((message.current / message.max) * 100).toFixed(message.precision ?? 0) +
-      "%"
+    "%"
     : message.current.toFixed(message.precision ?? 0) + (message.unit || "");
   const widthPercent = ((message.current / message.max) * 100).toFixed(2) + "%";
 
@@ -265,7 +266,6 @@ export default function Home() {
     inputRef.current?.click();
   };
 
-  // Skeleton for file upload
   async function uploadFile() {
     if (!file) return;
     setFormErrorDocumentAuthor(null);
@@ -274,17 +274,17 @@ export default function Home() {
 
     let hasFormErrors = false;
 
-    if(!documentTitle.trim()) {
+    if (!documentTitle.trim()) {
       setFormErrorDocumentTitle("Title is required");
       hasFormErrors = true;
     }
 
-    if(!documentAuthor.trim()) {
+    if (!documentAuthor.trim()) {
       setFormErrorDocumentAuthor("Author is required");
       hasFormErrors = true;
     }
 
-    if(hasFormErrors){
+    if (hasFormErrors) {
       return
     }
 
@@ -298,19 +298,6 @@ export default function Home() {
         kind: "string",
         text: "Uploading...",
       });
-
-
-      // Simulate progress:
-      // let uploaded = 0;
-      // const chunk = file.size / 10;
-      // while (uploaded < file.size) {
-      //   await new Promise((r) => setTimeout(r, 200));
-      //   uploaded = Math.min(uploaded + chunk, file.size);
-      //   updateMessageById(id, (m) => ({
-      //     ...(m as ProgressBarMessage),
-      //     current: uploaded,
-      //   }));
-      // }
 
       addProgressMessage({
         kind: "string",
@@ -328,7 +315,6 @@ export default function Home() {
         text: `Created object with id ${objectId}`,
       });
 
-            // Example progress updates:
       const progressBarId = addProgressMessage({
         kind: "progressBar",
         title: "Uploading",
@@ -339,20 +325,24 @@ export default function Home() {
         titleStyle: { color: "blue" },
       });
 
-      const reader = file.stream().getReader();
-      let offset = 0;
+      async function onChunk(blob: Blob, offset: number) {
+        // Simulate a delay
+        await new Promise((resolve) => {
+          setTimeout(resolve, 50)
+        })
+        updateMessageById(progressBarId, (bar: ProgressMessage) => {
+          (bar as ProgressBarMessage).current = offset + MAX_UPLOAD_CHUNK_SIZE
+          return bar
+        })
+      }
 
-      // async function onChunk(chunkBlob: Blob, offset: number) {}
+      await (new FileStreamer(
+        file,
+        MAX_UPLOAD_CHUNK_SIZE,
+        onChunk
+      ).run());
 
-      // while (true) {
-      //   const { done, value } = await reader.read();
-      //   if (done) break;
 
-      //   const chunkBlob = new Blob([value]);
-      //   await onChunk(chunkBlob, offset);
-
-      //   offset += value?.length ?? 0;
-      // }
       addProgressMessage({
         kind: "string",
         text: "Upload complete!",
@@ -369,7 +359,7 @@ export default function Home() {
       });
       setUploadFailed(true);
       setUploadFinished(false);
-    }    
+    }
     finally {
       setIsUploading(false);
     }
@@ -532,10 +522,10 @@ export default function Home() {
                     {isUploading
                       ? "Uploading..."
                       : uploadFailed
-                      ? "Upload Failed."
-                      : uploadFinished
-                      ? "Upload Complete."
-                      : "Upload"}
+                        ? "Upload Failed."
+                        : uploadFinished
+                          ? "Upload Complete."
+                          : "Upload"}
                   </Span>
                   {isUploading && <LoadingSpinnerOverlay size="1rem" />}
                 </Button>
