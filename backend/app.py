@@ -11,7 +11,7 @@ from backend.api_types import TaskContext, FatalTaskError, ClientMessage, AppRes
 import os
 import traceback
 from termcolor import colored
-from mysql.connector
+import mysql.connector
 from src.utils.project_structure import get_project_root
 
 from backend.short_tasks.files.upload.new_object import task_new_object
@@ -53,7 +53,7 @@ register_short_task('/files/upload/new-object', task_new_object)
 
 
 app_resources = AppResources(
-    mysql_conn=mysql_conn
+    mysql_conn=mysql_conn,
     bucket_path=os.path.join(project_root, 'bucket')
     )
 

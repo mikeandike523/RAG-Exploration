@@ -6,4 +6,4 @@ cd "$dn"
 
 cd ..
 
-pnpx concurrently "cd frontend && pnpm run dev" "./__python backend/app.py" 
+pnpx concurrently --kill-others-on-fail "cd frontend && pnpm run dev" "./__inenv python backend/app.py" 

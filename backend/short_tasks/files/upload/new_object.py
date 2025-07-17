@@ -5,14 +5,17 @@ import uuid
 from backend.api_types import FatalTaskError, AppResources
 
 MAX_FILE_SIZE = 20 * 1024 * 1024
-const ALLOWED_TYPES = {
+ALLOWED_TYPES = {
   "text/plain": {
     "description": "Plain Text",
     "extensions": ["txt"],
   },
 }
 
-# Defive allowed extensions
+MAX_RETRIES = 5
+
+
+# Derive allowed extensions
 
 allowed_extensions = []
 for type_info in ALLOWED_TYPES.values():
@@ -61,4 +64,39 @@ def task_new_object(args, app_resources: AppResources):
     # so we need to catch mysql errors and read error code
 
     
+    # Insert into objects with retry logic for UUID conflicts
+    for attempt in range(MAX_RETRIES):
+        try:
+            cursor = mysql_conn.cursor()
+            cursor.execute(
+                "INSERT INTO objects (object_id, name, mime_type, size) VALUES (%s, %s, %s, %s)",
+                (object_id, name, mime_type, size)
+            )
+            mysql_conn.commit()
+            cursor.close()
+            break  # Success, exit retry loop
+        except mysql.connector.Error as err:
+            cursor.close()
+            # Check if it's a duplicate key error (error code 1062)
+            if err.errno == 1062:
+                if attempt < MAX_RETRIES - 1:
+                    # Generate new UUID and retry
+                    object_id = str(uuid.uuid4())
+                    continue
+                else:
+                    # Max retries exceeded
+                    raise FatalTaskError("Failed to generate unique object ID after multiple attempts", {"status": 500})
+            else:
+                # Other database error
+                raise FatalTaskError(f"Database error: {err}", {"status": 500})
 
+    file_path = os.path.join(bucket_path, object_id)   # no extension
+    try:
+        # open in write–binary and set its size
+        with open(file_path, 'wb') as f:
+            f.truncate(size)
+    except OSError as e:
+        # if we can’t write the file, roll back (or at least report) an error
+        raise FatalTaskError(f"Could not create object file: {e}", {"status": 500})
+
+    return object_id
