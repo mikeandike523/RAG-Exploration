@@ -137,6 +137,14 @@ export default function Home() {
   const [documentTitle, setDocumentTitle] = useState("");
   const [documentAuthor, setDocumentAuthor] = useState("");
   const [documentDescription, setDocumentDescription] = useState("");
+  const [formErrorDocumentTitle, setFormErrorDocumentTitle] = useState<
+    string | null
+  >(null);
+  const [formErrorDocumentAuthor, setFormErrorDocumentAuthor] = useState<
+    string | null
+  >(null);
+  const [formErrorDocumentDescription, setFormErrorDocumentDescription] =
+    useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const progressContainerRef = useRef<HTMLDivElement>(null);
@@ -202,14 +210,20 @@ export default function Home() {
     const selected = files[0];
     if (!selected) return;
 
-    if(!selected.name.includes(".")) {
+    if (!selected.name.includes(".")) {
       setError("Invalid file name. Please include a valid file extension.");
       setFile(null);
       return;
     }
 
-    if (!Object.values(ALLOWED_TYPES).flatMap(t=>t.extensions).includes(selected.name.split(".").pop()??'')) {
-      setError(`Unsupported file extension ${selected.name.split('.').pop()??''})`);
+    if (
+      !Object.values(ALLOWED_TYPES)
+        .flatMap((t) => t.extensions)
+        .includes(selected.name.split(".").pop() ?? "")
+    ) {
+      setError(
+        `Unsupported file extension ${selected.name.split(".").pop() ?? ""})`
+      );
       setFile(null);
       return;
     }
@@ -231,6 +245,9 @@ export default function Home() {
     setDocumentTitle("");
     setDocumentAuthor("");
     setDocumentDescription("");
+    setFormErrorDocumentTitle(null);
+    setFormErrorDocumentAuthor(null);
+    setFormErrorDocumentDescription(null);
   };
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -249,6 +266,27 @@ export default function Home() {
   // Skeleton for file upload
   const uploadFile = async (): Promise<void> => {
     if (!file) return;
+    setFormErrorDocumentAuthor(null);
+    setFormErrorDocumentDescription(null);
+    setFormErrorDocumentTitle(null);
+
+    let hasFormErrors = false;
+
+    if(!documentTitle.trim()) {
+      setFormErrorDocumentTitle("Title is required");
+      hasFormErrors = true;
+    }
+
+    if(!documentAuthor.trim()) {
+      setFormErrorDocumentAuthor("Author is required");
+      hasFormErrors = true;
+    }
+
+    if(hasFormErrors){
+      return
+    }
+
+
     try {
       setIsUploading(true);
       setUploadFinished(false);
@@ -443,6 +481,9 @@ export default function Home() {
                         setDocumentTitle(e.target.value)
                       }
                     />
+                    {formErrorDocumentTitle && (
+                      <P color="red">{formErrorDocumentTitle}</P>
+                    )}
                   </Label>
                   <Label width="100%">
                     <P>Author*:</P>
@@ -450,15 +491,19 @@ export default function Home() {
                       disabled={isUploading || uploadFinished || uploadFailed}
                       width="100%"
                       type="text"
-                      value={documentTitle}
+                      value={documentAuthor}
                       onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        setDocumentTitle(e.target.value)
+                        setDocumentAuthor(e.target.value)
                       }
                     />
                   </Label>
                   <Label width="100%">
                     <P>Description*:</P>
                     <Textarea
+                      value={documentDescription}
+                      onChange={(e: ChangeEvent<HTMLTextAreaElement>) => {
+                        setDocumentDescription(e.target.value);
+                      }}
                       disabled={isUploading || uploadFinished || uploadFailed}
                       width="100%"
                       rows={3}

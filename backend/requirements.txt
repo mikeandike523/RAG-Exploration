@@ -4,3 +4,4 @@ python-dotenv
 eventlet
 termcolor
 redis
+flask_cors

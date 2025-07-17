@@ -12,6 +12,8 @@ import os
 import traceback
 from termcolor import colored
 import mysql.connector
+from flask_cors import CORS
+
 from src.utils.project_structure import get_project_root
 
 from backend.short_tasks.files.upload.new_object import task_new_object
@@ -36,8 +38,14 @@ mysql_conn = mysql.connector.connect(
 )
 
 app = Flask(__name__)
+CORS(app)
 app.config['SECRET_KEY'] = env_vars['SECRET_KEY']
-socketio = SocketIO(app, async_mode='eventlet', message_queue=redis_url)
+socketio = SocketIO(
+    app,
+    async_mode='eventlet',
+    message_queue=redis_url,
+    cors_allowed_origins="*"
+)
 
 LONG_TASKS: Dict[str, Callable[[TaskContext, Any, AppResources], Any]] = {}
 
