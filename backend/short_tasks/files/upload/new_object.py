@@ -1,6 +1,8 @@
 from typing import TypedDict
+import os
 
 import uuid
+import mysql.connector
 
 from backend.api_types import FatalTaskError, AppResources
 
@@ -58,6 +60,8 @@ def task_new_object(args, app_resources: AppResources):
     bucket_path = app_resources.bucket_path
 
     object_id = str(uuid.uuid4())
+
+    print(object_id)
 
     # insert into objects values (object_id, name, mime_type, size, DEFAULT, DEFAULT, DEFAULT)
     # while have key constraint violation, try again with new object id (uuidv4) (even though this should virtually never occur, we need to be correct)

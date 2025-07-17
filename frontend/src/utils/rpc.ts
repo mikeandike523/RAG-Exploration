@@ -83,12 +83,12 @@ export async function callRoute<
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ task: route, args }),
-      signal:
-        typeof AbortSignal === "undefined"
-          ? undefined
-          : timeout
-          ? AbortSignal.timeout(timeout)
-          : undefined,
+      // signal:
+      //   typeof AbortSignal === "undefined"
+      //     ? undefined
+      //     : timeout
+      //     ? AbortSignal.timeout(timeout)
+      //     : undefined,
     });
     const responseBody = await response.text();
     const responseBodyAsJSON = safeParse(responseBody);
@@ -161,12 +161,12 @@ export async function callLiveRoute<
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ task: route, args }),
-      signal:
-        typeof AbortSignal === "undefined"
-          ? undefined
-          : timeout
-          ? AbortSignal.timeout(timeout)
-          : undefined,
+      // signal:
+      //   typeof AbortSignal === "undefined"
+      //     ? undefined
+      //     : timeout
+      //     ? AbortSignal.timeout(timeout)
+      //     : undefined,
     });
     const responseBody = await taskBeginResponse.text();
     const responseBodyAsJSON = safeParse(responseBody);
