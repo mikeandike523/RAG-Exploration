@@ -4,7 +4,7 @@ eventlet.monkey_patch()
 
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, join_room
-from dataclasses import dataclass, asdict
+from dataclasses import asdict
 from typing import Any, Callable, Dict
 import uuid
 from dotenv import dotenv_values
@@ -12,7 +12,6 @@ from backend.api_types import (
     ErrorResponse,
     TaskContext,
     FatalTaskError,
-    ClientMessage,
     AppResources,
     UpdateResponse,
 )
@@ -31,16 +30,18 @@ project_root = get_project_root()
 
 backend_folder = os.path.join(project_root, "backend")
 
-logs_folder = os.path.join(backend_folder,"logs")
+logs_folder = os.path.join(backend_folder, "logs")
 
 logs_file_debug = os.path.join(logs_folder, "debug.txt")
 
 with open(logs_file_debug, "w") as fl:
-    fl.write('')
+    fl.write("")
+
 
 def print_to_debug_log(message):
     with open(logs_file_debug, "a") as fl:
         print(message, file=fl)
+
 
 env_vars = dotenv_values(os.path.join(os.path.dirname(__file__), ".env"))
 
@@ -82,41 +83,41 @@ socketio = SocketIO(
 # I saw some sources mentioning:
 
 # 1. WSGI server may strip the allow origin headers
-        # -- I doubt it as I am using the built in wsgi server made by using socketio.run
+# -- I doubt it as I am using the built in wsgi server made by using socketio.run
 # 2. bug in newest version of libraries or library compatibility issue
-        # I tried downgrading and I got the same issue and if I tried downgrading too far (such as downgrading to version 4 of flask-socketio)
-        # it just did not load at all (was not compatible with latest flask)
-        # I do not want to downgrade all tools incredibly far due to security concerns
+# I tried downgrading and I got the same issue and if I tried downgrading too far (such as downgrading to version 4 of flask-socketio)
+# it just did not load at all (was not compatible with latest flask)
+# I do not want to downgrade all tools incredibly far due to security concerns
 
 # I may post on stackoverflow but I am worried since there are many similarly named posts that, though not relevant, will muddy the discussion
 # I am considering raising a github issue but the work to make a minimal example repository is a lot
 # Either way, need to do those later as I am too busy right now
 
+
 @app.after_request
 def apply_cors(response):
     # 1) Always allow the Origin that made the request (or * as fallback)
-    response.headers['Access-Control-Allow-Origin'] = \
-        request.headers.get('Origin', '*')
+    response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
 
     # 2) Tell the browser which methods we support
-    response.headers['Access-Control-Allow-Methods'] = \
-        'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+    response.headers["Access-Control-Allow-Methods"] = (
+        "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    )
 
     # 3) Echo back any custom headers the client asked to use
-    response.headers['Access-Control-Allow-Headers'] = \
-        request.headers.get(
-            'Access-Control-Request-Headers',
-            'Content-Type, Authorization'
-        )
+    response.headers["Access-Control-Allow-Headers"] = request.headers.get(
+        "Access-Control-Request-Headers", "Content-Type, Authorization"
+    )
 
     # 4) If you need to include cookies/auth credentials
-    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    response.headers["Access-Control-Allow-Credentials"] = "true"
 
     # 5) For a preflight (OPTIONS) request, return no content
-    if request.method == 'OPTIONS':
+    if request.method == "OPTIONS":
         response.status_code = 204
 
     return response
+
 
 LONG_TASKS: Dict[str, Callable[[TaskContext, Any, AppResources], Any]] = {}
 
@@ -136,13 +137,10 @@ register_short_task("/files/upload/new-object", task_new_object)
 
 
 app_resources = AppResources(
-    mysql_conn=mysql_conn, bucket_path=os.path.join(project_root, "bucket")
+    mysql_conn=mysql_conn,
+    bucket_path=os.path.join(project_root, "bucket"),
+    print_to_debug_log=print_to_debug_log,
 )
-
-
-@app.route("/hello-world", methods=["POST"])
-def hello_world():
-    return jsonify("Hello World"), 200
 
 
 @app.route("/run", methods=["POST"])
@@ -202,7 +200,7 @@ def begin_task():
 
 def _run_long_task(task_name: str, task_id: str, args: dict):
 
-    ctx = TaskContext(room=task_id)
+    ctx = TaskContext(room=task_id, socketio=socketio)
     handler = LONG_TASKS[task_name]
 
     try:

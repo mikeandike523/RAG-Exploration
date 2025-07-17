@@ -1,8 +1,7 @@
-from typing import Any, Optional, Union, Callable
-from dataclasses import dataclass
+from typing import Any, Optional, Callable
+from dataclasses import asdict, dataclass
 
 import mysql.connector
-
 
 # 2) Define your response dataclasses
 @dataclass
@@ -49,35 +48,37 @@ class ClientMessage:
 
 # 3) A simple context to wrap emits into the room
 class TaskContext:
-    def __init__(self, room: str):
+    def __init__(self, room: str, socketio):
         self.room = room
+        self.socketio=socketio
 
     def emit_success(self, result: Any):
         payload = SuccessResponse(result=result)
-        socketio.emit('success', asdict(payload), room=self.room)
+        self.socketio.emit('success', asdict(payload), room=self.room)
 
     def emit_error(self, message: str, cause: Any = None):
         payload = ErrorResponse(message=message, cause=cause)
-        socketio.emit('error', asdict(payload), room=self.room)
+        self.socketio.emit('error', asdict(payload), room=self.room)
 
     def emit_fatal_error(self, message: str, cause: Any = None):
         payload = FatalErrorResponse(message=message, cause=cause)
-        socketio.emit('fatal_error', asdict(payload), room=self.room)
+        self.socketio.emit('fatal_error', asdict(payload), room=self.room)
 
     def emit_progress(self, current: int, total: int, name: Optional[str] = None):
         payload = ProgressResponse(current=current, total=total)
-        socketio.emit('progress', asdict(payload), room=self.room)
+        self.socketio.emit('progress', asdict(payload), room=self.room)
 
     def emit_update(self, message: str, extra: Optional[Any] = None):
         payload = UpdateResponse(message=message, extra=extra)
-        socketio.emit('update', asdict(payload), room=self.room)
+        self.socketio.emit('update', asdict(payload), room=self.room)
 
     def emit_warning(self, message: str, extra: Optional[Any] = None):
         payload = WarningResponse(message=message,extra=extra)
-        socketio.emit('warning', asdict(payload), room=self.room)
+        self.socketio.emit('warning', asdict(payload), room=self.room)
         
 
 @dataclass
 class AppResources:
     mysql_conn: mysql.connector.MySQLConnection
     bucket_path: str
+    print_to_debug_log: Callable[[Any],None]

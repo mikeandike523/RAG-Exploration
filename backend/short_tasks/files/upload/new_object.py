@@ -48,7 +48,7 @@ def task_new_object(args, app_resources: AppResources):
     if "." not in name:
         raise FatalTaskError("File must have an extension.", {"status": 400})
 
-    ext = os.path.splitext(name)[1].lower()
+    ext = name.split(".")[-1]
 
     if ext not in allowed_extensions:
         raise FatalTaskError(f"Unsupported file type: {ext}", {"status": 415})
@@ -73,7 +73,7 @@ def task_new_object(args, app_resources: AppResources):
         try:
             cursor = mysql_conn.cursor()
             cursor.execute(
-                "INSERT INTO objects (object_id, name, mime_type, size) VALUES (%s, %s, %s, %s)",
+                "INSERT INTO objects (id, name, mime_type, size) VALUES (%s, %s, %s, %s)",
                 (object_id, name, mime_type, size)
             )
             mysql_conn.commit()

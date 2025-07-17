@@ -123,6 +123,7 @@ export async function callRoute<
     return responseBodyAsJSON.data as TRet;
   } catch (e) {
     if (e instanceof RPCerror) {
+      console.log(JSON.stringify(e, null, 2))
       throw e;
     } else {
       throw new RPCerror(

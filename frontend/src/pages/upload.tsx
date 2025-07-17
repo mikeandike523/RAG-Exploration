@@ -36,6 +36,8 @@ const ALLOWED_TYPES = {
   },
 };
 
+const UPLOAD_CHUNK_SIZE= 16 * 1024 // 16 kB
+
 type TextMessage = {
   kind: "string";
   text: string;
@@ -264,7 +266,7 @@ export default function Home() {
   };
 
   // Skeleton for file upload
-  const uploadFile = async (): Promise<void> => {
+  async function uploadFile() {
     if (!file) return;
     setFormErrorDocumentAuthor(null);
     setFormErrorDocumentDescription(null);
@@ -297,16 +299,7 @@ export default function Home() {
         text: "Uploading...",
       });
 
-      // Example progress updates:
-      const progressBarId = addProgressMessage({
-        kind: "progressBar",
-        title: "Uploading",
-        showAsPercent: true,
-        max: file.size,
-        current: 0,
-        precision: 0,
-        titleStyle: { color: "blue" },
-      });
+
       // Simulate progress:
       // let uploaded = 0;
       // const chunk = file.size / 10;
@@ -335,20 +328,31 @@ export default function Home() {
         text: `Created object with id ${objectId}`,
       });
 
+            // Example progress updates:
+      const progressBarId = addProgressMessage({
+        kind: "progressBar",
+        title: "Uploading",
+        showAsPercent: true,
+        max: file.size,
+        current: 0,
+        precision: 0,
+        titleStyle: { color: "blue" },
+      });
+
       const reader = file.stream().getReader();
       let offset = 0;
 
-      async function onChunk(chunkBlob: Blob, offset: number) {}
+      // async function onChunk(chunkBlob: Blob, offset: number) {}
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      // while (true) {
+      //   const { done, value } = await reader.read();
+      //   if (done) break;
 
-        const chunkBlob = new Blob([value]);
-        await onChunk(chunkBlob, offset);
+      //   const chunkBlob = new Blob([value]);
+      //   await onChunk(chunkBlob, offset);
 
-        offset += value?.length ?? 0;
-      }
+      //   offset += value?.length ?? 0;
+      // }
       addProgressMessage({
         kind: "string",
         text: "Upload complete!",
@@ -357,7 +361,7 @@ export default function Home() {
       setUploadFinished(true);
       setUploadFailed(false);
     } catch (err) {
-      console.error("Upload failed", err);
+      console.log("Reached catch block")
       addProgressMessage({
         kind: "string",
         text: "Upload failed.",
@@ -365,7 +369,8 @@ export default function Home() {
       });
       setUploadFailed(true);
       setUploadFinished(false);
-    } finally {
+    }    
+    finally {
       setIsUploading(false);
     }
   };
