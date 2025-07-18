@@ -1,3 +1,4 @@
+import json
 import eventlet
 
 eventlet.monkey_patch()
@@ -39,9 +40,9 @@ with open(logs_file_debug, "w") as fl:
     fl.write("")
 
 
-def print_to_debug_log(message):
+def print_to_debug_log(message, *args, **kwargs):
     with open(logs_file_debug, "a") as fl:
-        print(message, file=fl)
+        print(message, *args, file=fl, **kwargs)
 
 
 env_vars = dotenv_values(os.path.join(os.path.dirname(__file__), ".env"))
@@ -144,18 +145,19 @@ app_resources = AppResources(
     print_to_debug_log=print_to_debug_log,
 )
 
-
-
 @app.route("/run", methods=["POST"])
 def run_short_task():
 
     print_to_debug_log("Recieved short task")
 
+    # get raw body text of request
 
-    data = request.get_json(force=True)
+    body_text = request.get_data(as_text=True)
 
-
-    print_to_debug_log(data)
+    try:
+        data = json.loads(body_text)
+    except json.JSONDecodeError:
+        return jsonify({"error": "Invalid JSON format"}), 400
 
     task_name = data.get("task")
     args = data.get("args", None)
