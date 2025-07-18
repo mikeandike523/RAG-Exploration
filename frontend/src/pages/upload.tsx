@@ -1,28 +1,27 @@
+import { blobToBase64 } from "@maruware/blob-to-base64";
 import Head from "next/head";
 import React, {
-  ChangeEvent,
   DragEvent,
   useEffect,
   useRef,
-  useState,
+  useState
 } from "react";
 import { MdCloudUpload } from "react-icons/md";
 import {
   Button,
   Div,
   H1,
-  Input,
-  Label,
   P,
-  Span,
-  Textarea,
+  Span
 } from "style-props-html";
 import { v4 as uuidv4 } from "uuid";
 
+
 import LoadingSpinnerOverlay from "@/components/LoadingSpinnerOverlay";
 import theme from "@/themes/light";
-import { callRoute } from "@/utils/rpc";
 import { FileStreamer } from "@/utils/FileStreamer";
+import { callRoute } from "@/utils/rpc";
+import { SerializableObject } from "@/utils/serialization";
 
 // Just development for now,
 // In the future, may need a tunnel
@@ -137,14 +136,6 @@ export default function Home() {
   const [progressMessages, setProgressMessages] = useState<
     Map<string, ProgressMessage>
   >(new Map());
-  const [documentTitle, setDocumentTitle] = useState("");
-  const [documentAuthor, setDocumentAuthor] = useState("");
-  const [formErrorDocumentTitle, setFormErrorDocumentTitle] = useState<
-    string | null
-  >(null);
-  const [formErrorDocumentAuthor, setFormErrorDocumentAuthor] = useState<
-    string | null
-  >(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const progressContainerRef = useRef<HTMLDivElement>(null);
@@ -242,10 +233,6 @@ export default function Home() {
 
     setError(null);
     setFile(selected);
-    setDocumentTitle("");
-    setDocumentAuthor("");
-    setFormErrorDocumentTitle(null);
-    setFormErrorDocumentAuthor(null);
   };
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -263,25 +250,6 @@ export default function Home() {
 
   async function uploadFile() {
     if (!file) return;
-    setFormErrorDocumentAuthor(null);
-    setFormErrorDocumentTitle(null);
-
-    let hasFormErrors = false;
-
-    if (!documentTitle.trim()) {
-      setFormErrorDocumentTitle("Title is required");
-      hasFormErrors = true;
-    }
-
-    if (!documentAuthor.trim()) {
-      setFormErrorDocumentAuthor("Author is required");
-      hasFormErrors = true;
-    }
-
-    if (hasFormErrors) {
-      return;
-    }
-
     try {
       setIsUploading(true);
       setUploadFinished(false);
@@ -297,7 +265,7 @@ export default function Home() {
         text: "Creating object...",
       });
 
-      const objectId = await callRoute(endpoint, "/files/upload/new-object", {
+      const objectId = await callRoute<SerializableObject, string>(endpoint, "/files/upload/new-object", {
         name: file.name,
         mime_type: file.type,
         size: file.size,
@@ -319,12 +287,44 @@ export default function Home() {
       });
 
       async function onChunk(blob: Blob, offset: number) {
-        // Simulate a delay
-        await new Promise((resolve) => {
-          setTimeout(resolve, 50);
-        });
+
+        const numBytesWritten = await callRoute<SerializableObject, number>(endpoint,"/files/upload/write-object-bytes", {
+          object_id: objectId,
+          position: offset,
+          data: await blobToBase64(blob),
+        })
+      
+
+        if(!Number.isInteger(numBytesWritten)) {
+          throw new Error(
+`
+Invalid response from server.
+Expected an integer.
+Recieved type ${typeof numBytesWritten},
+value ${numBytesWritten} instead of an integer.
+`.trim()
+          )
+        }
+
+
+        // Note, our custom `FileStreamer` class
+        // already manages blob size to be exactly as needed,
+        // even when approach the end of the file and having
+        // incomplete chunks
+
+        if(numBytesWritten!==blob.size){
+          throw new Error(
+`
+Invalid response from server.
+
+Expected to write exactly ${blob.size} bytes,
+Wrote ${numBytesWritten} bytes instead of ${blob.size}.
+`
+)
+        }
+
         updateMessageById(progressBarId, (bar: ProgressMessage) => {
-          (bar as ProgressBarMessage).current = offset + MAX_UPLOAD_CHUNK_SIZE;
+          (bar as ProgressBarMessage).current = offset + blob.size;
           return bar;
         });
       }
@@ -333,13 +333,19 @@ export default function Home() {
 
       addProgressMessage({
         kind: "string",
-        text: "Upload complete!",
+        text: `Successfully uploaded file to object ${objectId}`,
         color: "green",
       });
+
+      addProgressMessage({
+        kind: "string",
+        text: `Creating document metadata...`,
+      })
+
       setUploadFinished(true);
       setUploadFailed(false);
     } catch (err) {
-      console.log("Reached catch block");
+      console.error(err);
       addProgressMessage({
         kind: "string",
         text: "Upload failed.",
@@ -450,40 +456,6 @@ export default function Home() {
                   </Div>
                 )}
               </Div>
-              {file && (
-                <Div width="100%" maxWidth="30em">
-                  <Label width="100%">
-                    <P>Title*:</P>
-                    <Input
-                      disabled={isUploading || uploadFinished || uploadFailed}
-                      width="100%"
-                      type="text"
-                      value={documentTitle}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        setDocumentTitle(e.target.value)
-                      }
-                    />
-                    {formErrorDocumentTitle && (
-                      <P color="red">{formErrorDocumentTitle}</P>
-                    )}
-                  </Label>
-                  <Label width="100%">
-                    <P>Author*:</P>
-                    <Input
-                      disabled={isUploading || uploadFinished || uploadFailed}
-                      width="100%"
-                      type="text"
-                      value={documentAuthor}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        setDocumentAuthor(e.target.value)
-                      }
-                    />
-                    {formErrorDocumentAuthor && (
-                      <P color="red">{formErrorDocumentAuthor}</P>
-                    )}
-                  </Label>
-                </Div>
-              )}
               {file && (
                 <Button
                   onClick={uploadFile}

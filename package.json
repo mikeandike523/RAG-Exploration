@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start-frontend-backend-dev": "bash scripts/start-frontend-backend-dev.sh"
+    "start-app-servers-dev": "bash scripts/start-app-servers-dev.sh",
+    "start-vllm-mistral-server": "./__inenv bash vllm_servers/mistral.sh",
+    "start-docker-compose-servers":"bash servers/start-all.sh",
+    "migrate-backend-db": "./__inenv python backend/migrate.py"
   },
   "keywords": [],
   "author": "",

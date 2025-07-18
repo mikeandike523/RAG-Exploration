@@ -5,6 +5,10 @@ from dotenv import dotenv_values
 
 from src.utils.project_structure import get_project_root
 
+project_root = get_project_root()
+
+bucket_folder = os.path.join(project_root, "bucket")
+
 def clear_database(conn):
     """
     Remove all database objects (events, triggers, views, stored routines, and tables),
@@ -109,6 +113,8 @@ def setup_database(conn):
             `title` TEXT NOT NULL,
             `author` TEXT NOT NULL,
             `description` TEXT,
+            `short_summary` TEXT,
+            `main_takeaways` TEXT,
             `object_id` CHAR(36),
             `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             `last_modified` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -149,6 +155,14 @@ def migrate(yes):
 
     print("Setting up database schema...")
     setup_database(conn)
+
+    print("Clearing old bucket files...")
+    bucket_files = os.listdir(bucket_folder)
+    for file in bucket_files:
+        os.remove(os.path.join(bucket_folder, file))
+    print(f"Removed {len(bucket_files)} old bucket files.")
+
+
 
     conn.close()
     click.echo("Migration complete.")

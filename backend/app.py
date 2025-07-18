@@ -148,10 +148,6 @@ app_resources = AppResources(
 @app.route("/run", methods=["POST"])
 def run_short_task():
 
-    print_to_debug_log("Recieved short task")
-
-    # get raw body text of request
-
     body_text = request.get_data(as_text=True)
 
     try:
@@ -161,8 +157,6 @@ def run_short_task():
 
     task_name = data.get("task")
     args = data.get("args", None)
-
-    print_to_debug_log(task_name, args, list(SHORT_TASKS.keys()))
 
     if task_name not in SHORT_TASKS:
         return jsonify({"error": f"Unknown task '{task_name}'"}), 400

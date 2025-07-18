@@ -11,6 +11,9 @@ importers:
       '@emotion/react':
         specifier: ^11.14.0
         version: 11.14.0(@types/react@19.1.8)(react@19.1.0)
+      '@maruware/blob-to-base64':
+        specifier: ^0.0.8
+        version: 0.0.8
       next:
         specifier: 15.3.5
         version: 15.3.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -345,6 +348,9 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.29':
     resolution: {integrity: sha512-uw6guiW/gcAGPDhLmd77/6lW8QLeiV5RUTsAX46Db6oLhGaVj4lhnPwb184s1bkc8kdVg/+h988dro8GRDpmYQ==}
+
+  '@maruware/blob-to-base64@0.0.8':
+    resolution: {integrity: sha512-HBddnyU2KSCDsWGWA7saZP1qXNgwrdJLmPmIz9rzsCoHHYCBrCH98/BbT5Qi4pxgL69qeercJ61Z0uZspz+Hvw==}
 
   '@napi-rs/wasm-runtime@0.2.11':
     resolution: {integrity: sha512-9DPkXtvHydrcOsopiYpUgPHpmj0HWZKMUnL2dZqpvC42lsratuBG06V5ipyno0fUek5VlFsNQ+AcFATSrJXgMA==}
@@ -2118,6 +2124,8 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.4
+
+  '@maruware/blob-to-base64@0.0.8': {}
 
   '@napi-rs/wasm-runtime@0.2.11':
     dependencies:

@@ -89,4 +89,4 @@ def task_write_object_bytes(args: Dict, app_resources: AppResources) -> Dict[str
     except OSError as e:
         raise FatalTaskError(f"File write error: {e}", {'status': 500})
 
-    return {'bytes_written': written}
+    return written
