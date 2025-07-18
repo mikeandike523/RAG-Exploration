@@ -35,7 +35,7 @@ class WriteBytesParams(BaseModel):
         return v
 
 
-def write_object_bytes(args: Dict, app_resources: AppResources) -> Dict[str, int]:
+def task_write_object_bytes(args: Dict, app_resources: AppResources) -> Dict[str, int]:
     """
     Writes decoded bytes into an existing object file at a specified position.
 

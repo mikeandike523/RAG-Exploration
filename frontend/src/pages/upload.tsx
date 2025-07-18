@@ -37,7 +37,7 @@ const ALLOWED_TYPES = {
   },
 };
 
-const MAX_UPLOAD_CHUNK_SIZE = 16 * 1024 // 16 kB
+const MAX_UPLOAD_CHUNK_SIZE = 16 * 1024; // 16 kB
 
 type TextMessage = {
   kind: "string";
@@ -87,7 +87,7 @@ const ProgressBar: React.FC<{ message: ProgressBarMessage }> = ({
 }) => {
   const percentText = message.showAsPercent
     ? ((message.current / message.max) * 100).toFixed(message.precision ?? 0) +
-    "%"
+      "%"
     : message.current.toFixed(message.precision ?? 0) + (message.unit || "");
   const widthPercent = ((message.current / message.max) * 100).toFixed(2) + "%";
 
@@ -139,15 +139,12 @@ export default function Home() {
   >(new Map());
   const [documentTitle, setDocumentTitle] = useState("");
   const [documentAuthor, setDocumentAuthor] = useState("");
-  const [documentDescription, setDocumentDescription] = useState("");
   const [formErrorDocumentTitle, setFormErrorDocumentTitle] = useState<
     string | null
   >(null);
   const [formErrorDocumentAuthor, setFormErrorDocumentAuthor] = useState<
     string | null
   >(null);
-  const [formErrorDocumentDescription, setFormErrorDocumentDescription] =
-    useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const progressContainerRef = useRef<HTMLDivElement>(null);
@@ -247,10 +244,8 @@ export default function Home() {
     setFile(selected);
     setDocumentTitle("");
     setDocumentAuthor("");
-    setDocumentDescription("");
     setFormErrorDocumentTitle(null);
     setFormErrorDocumentAuthor(null);
-    setFormErrorDocumentDescription(null);
   };
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -269,7 +264,6 @@ export default function Home() {
   async function uploadFile() {
     if (!file) return;
     setFormErrorDocumentAuthor(null);
-    setFormErrorDocumentDescription(null);
     setFormErrorDocumentTitle(null);
 
     let hasFormErrors = false;
@@ -285,9 +279,8 @@ export default function Home() {
     }
 
     if (hasFormErrors) {
-      return
+      return;
     }
-
 
     try {
       setIsUploading(true);
@@ -328,20 +321,15 @@ export default function Home() {
       async function onChunk(blob: Blob, offset: number) {
         // Simulate a delay
         await new Promise((resolve) => {
-          setTimeout(resolve, 50)
-        })
+          setTimeout(resolve, 50);
+        });
         updateMessageById(progressBarId, (bar: ProgressMessage) => {
-          (bar as ProgressBarMessage).current = offset + MAX_UPLOAD_CHUNK_SIZE
-          return bar
-        })
+          (bar as ProgressBarMessage).current = offset + MAX_UPLOAD_CHUNK_SIZE;
+          return bar;
+        });
       }
 
-      await (new FileStreamer(
-        file,
-        MAX_UPLOAD_CHUNK_SIZE,
-        onChunk
-      ).run());
-
+      await new FileStreamer(file, MAX_UPLOAD_CHUNK_SIZE, onChunk).run();
 
       addProgressMessage({
         kind: "string",
@@ -351,7 +339,7 @@ export default function Home() {
       setUploadFinished(true);
       setUploadFailed(false);
     } catch (err) {
-      console.log("Reached catch block")
+      console.log("Reached catch block");
       addProgressMessage({
         kind: "string",
         text: "Upload failed.",
@@ -359,11 +347,10 @@ export default function Home() {
       });
       setUploadFailed(true);
       setUploadFinished(false);
-    }
-    finally {
+    } finally {
       setIsUploading(false);
     }
-  };
+  }
 
   return (
     <>
@@ -491,18 +478,9 @@ export default function Home() {
                         setDocumentAuthor(e.target.value)
                       }
                     />
-                  </Label>
-                  <Label width="100%">
-                    <P>Description*:</P>
-                    <Textarea
-                      value={documentDescription}
-                      onChange={(e: ChangeEvent<HTMLTextAreaElement>) => {
-                        setDocumentDescription(e.target.value);
-                      }}
-                      disabled={isUploading || uploadFinished || uploadFailed}
-                      width="100%"
-                      rows={3}
-                    />
+                    {formErrorDocumentAuthor && (
+                      <P color="red">{formErrorDocumentAuthor}</P>
+                    )}
                   </Label>
                 </Div>
               )}
@@ -522,10 +500,10 @@ export default function Home() {
                     {isUploading
                       ? "Uploading..."
                       : uploadFailed
-                        ? "Upload Failed."
-                        : uploadFinished
-                          ? "Upload Complete."
-                          : "Upload"}
+                      ? "Upload Failed."
+                      : uploadFinished
+                      ? "Upload Complete."
+                      : "Upload"}
                   </Span>
                   {isUploading && <LoadingSpinnerOverlay size="1rem" />}
                 </Button>

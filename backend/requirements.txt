@@ -4,6 +4,4 @@ python-dotenv
 eventlet
 termcolor
 redis
-
-# testing cors issue
-flask_cors
+pydantic

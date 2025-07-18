@@ -24,6 +24,7 @@ import mysql.connector
 from src.utils.project_structure import get_project_root
 
 from backend.short_tasks.files.upload.new_object import task_new_object
+from backend.short_tasks.files.upload.write_object_bytes import task_write_object_bytes
 
 project_root = get_project_root()
 
@@ -134,6 +135,7 @@ def register_short_task(name: str, fn: Callable[[Any], Any]):
 
 
 register_short_task("/files/upload/new-object", task_new_object)
+register_short_task("/files/upload/write-object-bytes", task_write_object_bytes)
 
 
 app_resources = AppResources(
@@ -143,14 +145,22 @@ app_resources = AppResources(
 )
 
 
+
 @app.route("/run", methods=["POST"])
 def run_short_task():
+
+    print_to_debug_log("Recieved short task")
+
+
     data = request.get_json(force=True)
+
+
     print_to_debug_log(data)
+
     task_name = data.get("task")
     args = data.get("args", None)
 
-    print(task_name, args, list(SHORT_TASKS.keys()))
+    print_to_debug_log(task_name, args, list(SHORT_TASKS.keys()))
 
     if task_name not in SHORT_TASKS:
         return jsonify({"error": f"Unknown task '{task_name}'"}), 400
@@ -170,9 +180,9 @@ def run_short_task():
             return jsonify({"message": str(exc), "cause": exc.cause}), 500
         return jsonify({"message": str(exc)}), 500
     except Exception as exc:
-        print(colored(f"Server error occured upon user request: {str(exc)}", "red"))
-        print(colored(f"Traceback:", "red"))
-        traceback.print_exc()
+        print_to_debug_log(colored(f"Server error occured upon user request: {str(exc)}", "red"))
+        print_to_debug_log(colored(f"Traceback:", "red"))
+        print_to_debug_log(traceback.format_exc())
         return (
             jsonify(
                 {"error": "An unknown server error occurred. Please try again later."}
@@ -210,9 +220,9 @@ def _run_long_task(task_name: str, task_id: str, args: dict):
         ctx.emit_fatal_error(str(exc), cause=exc.cause)
     except Exception as exc:
         ctx.emit_fatal_error("An unknown server error occured. Please try again later.")
-        print(colored(f"Server error occured upon user request: {str(exc)}", "red"))
-        print(colored(f"Traceback:", "red"))
-        traceback.print_exc()
+        print_to_debug_log(colored(f"Server error occured upon user request: {str(exc)}", "red"))
+        print_to_debug_log(colored(f"Traceback:", "red"))
+        print_to_debug_log(traceback.print_exc())
 
 
 @socketio.on("join")
