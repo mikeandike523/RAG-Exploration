@@ -1,74 +1,98 @@
-from typing import TypedDict
+from typing import Dict, List, Iterable, Callable, TypeVar
 import os
-
 import uuid
+import itertools
 import mysql.connector
+from pydantic import BaseModel, StrictInt, StrictStr, ValidationError, validator
 
 from backend.api_types import FatalTaskError, AppResources
 
-MAX_FILE_SIZE = 20 * 1024 * 1024
+# Constants
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 ALLOWED_TYPES = {
-  "text/plain": {
-    "description": "Plain Text",
-    "extensions": ["txt"],
-  },
+    "text/plain": {
+        "description": "Plain Text",
+        "extensions": ["txt"],
+    },
+    # Add other mime types as needed
 }
-
 MAX_RETRIES = 5
 
+# Derive allowed extensions using list comprehension flattening
+allowed_extensions: List[str] = [
+    ext
+    for type_info in ALLOWED_TYPES.values()
+    for ext in type_info["extensions"]
+]
 
-# Derive allowed extensions
+# Pydantic model for incoming parameters
+class NewObjectParams(BaseModel):
+    name: StrictStr
+    mime_type: StrictStr
+    size: StrictInt
 
-allowed_extensions = []
-for type_info in ALLOWED_TYPES.values():
-    allowed_extensions.extend(type_info["extensions"])
+    @validator('size')
+    def size_must_be_in_range(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError('size must be non-negative')
+        if v > MAX_FILE_SIZE:
+            raise ValueError(f'size exceeds maximum limit of {MAX_FILE_SIZE}')
+        return v
 
-class RouteParams(TypedDict):
-    name: str
-    mime_type: str
-    size: int
+    @validator('name')
+    def name_must_have_allowed_extension(cls, v: str) -> str:
+        if '.' not in v:
+            raise ValueError('missing file extension')
+        ext = v.rsplit('.', 1)[-1]
+        if ext not in allowed_extensions:
+            raise ValueError(f'unsupported file extension: {ext}')
+        return v
 
-def task_new_object(args, app_resources: AppResources):
-    name = args.get('name')
-    mime_type = args.get('mime_type')
-    size = args.get('size')
+    @validator('mime_type')
+    def mime_type_must_be_allowed(cls, v: str) -> str:
+        if v not in ALLOWED_TYPES:
+            raise ValueError(f'unsupported mime type: {v}')
+        return v
 
-    if not name or not mime_type or not size:
-        raise FatalTaskError("Missing required parameters", {"status":400})
 
-    if not isinstance(name, str) or not isinstance(mime_type, str) or not isinstance(size, int):
-        raise FatalTaskError("Invalid parameter types", {"status": 400})    
+def task_new_object(args: Dict, app_resources: AppResources) -> str:
+    """
+    API route logic: validate inputs, insert metadata, reserve file space.
 
-    if size < 0:
-        raise FatalTaskError("Invalid file size", {"status": 400})
+    Args:
+        args: dict with 'name', 'mime_type', 'size'
+        app_resources: holds mysql_conn and bucket_path
 
-    if size > MAX_FILE_SIZE:
-        raise FatalTaskError("File size exceeds maximum limit", {"status": 413})
+    Returns:
+        object_id (str): UUID of the newly created object.
 
-    if "." not in name:
-        raise FatalTaskError("File must have an extension.", {"status": 400})
+    Raises:
+        FatalTaskError on any validation or runtime failure.
+    """
+    # 1. Validate and parse
+    try:
+        params = NewObjectParams(**args)
+    except ValidationError as exc:
+        # Format errors for API response
+        details: List[str] = []
+        for err in exc.errors():
+            loc = err.get('loc', ['field'])[0]
+            msg = err.get('msg', '')
+            details.append(f"{loc}: {msg}")
+        raise FatalTaskError(
+            'Validation error',
+            {'status': 400, 'errors': details}
+        )
 
-    ext = name.split(".")[-1]
+    name = params.name
+    mime_type = params.mime_type
+    size = params.size
 
-    if ext not in allowed_extensions:
-        raise FatalTaskError(f"Unsupported file type: {ext}", {"status": 415})
-
-    if mime_type not in ALLOWED_TYPES:
-        raise FatalTaskError(f"Unsupported mime type: {mime_type}", {"status": 415})
-
+    # 2. Insert into database with UUID retry logic
     mysql_conn = app_resources.mysql_conn
     bucket_path = app_resources.bucket_path
-
     object_id = str(uuid.uuid4())
 
-    print(object_id)
-
-    # insert into objects values (object_id, name, mime_type, size, DEFAULT, DEFAULT, DEFAULT)
-    # while have key constraint violation, try again with new object id (uuidv4) (even though this should virtually never occur, we need to be correct)
-    # so we need to catch mysql errors and read error code
-
-    
-    # Insert into objects with retry logic for UUID conflicts
     for attempt in range(MAX_RETRIES):
         try:
             cursor = mysql_conn.cursor()
@@ -78,29 +102,27 @@ def task_new_object(args, app_resources: AppResources):
             )
             mysql_conn.commit()
             cursor.close()
-            break  # Success, exit retry loop
+            break
         except mysql.connector.Error as err:
             cursor.close()
-            # Check if it's a duplicate key error (error code 1062)
+            # Duplicate key error code 1062: retry
+            if err.errno == 1062 and attempt < MAX_RETRIES - 1:
+                object_id = str(uuid.uuid4())
+                continue
             if err.errno == 1062:
-                if attempt < MAX_RETRIES - 1:
-                    # Generate new UUID and retry
-                    object_id = str(uuid.uuid4())
-                    continue
-                else:
-                    # Max retries exceeded
-                    raise FatalTaskError("Failed to generate unique object ID after multiple attempts", {"status": 500})
-            else:
-                # Other database error
-                raise FatalTaskError(f"Database error: {err}", {"status": 500})
+                raise FatalTaskError(
+                    'Failed to generate unique object ID after multiple attempts',
+                    {'status': 500}
+                )
+            raise FatalTaskError(f'Database error: {err}', {'status': 500})
 
-    file_path = os.path.join(bucket_path, object_id)   # no extension
+    # 3. Reserve file storage
+    file_path = os.path.join(bucket_path, object_id)
     try:
-        # open in write–binary and set its size
         with open(file_path, 'wb') as f:
             f.truncate(size)
     except OSError as e:
-        # if we can’t write the file, roll back (or at least report) an error
-        raise FatalTaskError(f"Could not create object file: {e}", {"status": 500})
+        # Optionally roll back DB insert here
+        raise FatalTaskError(f'Could not create object file: {e}', {'status': 500})
 
     return object_id
