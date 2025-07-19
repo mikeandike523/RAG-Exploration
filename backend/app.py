@@ -97,7 +97,7 @@ socketio = SocketIO(
 
 
 @app.after_request
-def apply_cors(response):
+def apply_cors_after(response):
     # 1) Always allow the Origin that made the request (or * as fallback)
     response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
 
@@ -147,7 +147,7 @@ app_resources = AppResources(
 
 @app.route("/run", methods=["POST"])
 def run_short_task():
-
+    print_to_debug_log(colored("Received new request:", "green"))
     body_text = request.get_data(as_text=True)
 
     try:
@@ -166,6 +166,9 @@ def run_short_task():
     try:
         result = handler(args, app_resources)
     except FatalTaskError as exc:
+        print_to_debug_log(colored(f"Server error occured upon user request: {str(exc)}", "red"))
+        print_to_debug_log(colored(f"Traceback:", "red"))
+        print_to_debug_log(traceback.format_exc())
         if exc.cause is not None:
             if isinstance(exc.cause, dict):
                 if "status" in exc.cause:

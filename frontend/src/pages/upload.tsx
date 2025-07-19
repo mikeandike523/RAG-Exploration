@@ -1,27 +1,17 @@
 import { blobToBase64 } from "@maruware/blob-to-base64";
 import Head from "next/head";
-import React, {
-  DragEvent,
-  useEffect,
-  useRef,
-  useState
-} from "react";
+import { DragEvent, useRef, useState } from "react";
 import { MdCloudUpload } from "react-icons/md";
-import {
-  Button,
-  Div,
-  H1,
-  P,
-  Span
-} from "style-props-html";
-import { v4 as uuidv4 } from "uuid";
+import { Button, Div, H1, P, Span } from "style-props-html";
 
-
+import { useLiveProgressViewer } from "@/components/live-progress-viewer/useLiveProgressViewer";
 import LoadingSpinnerOverlay from "@/components/LoadingSpinnerOverlay";
 import theme from "@/themes/light";
 import { FileStreamer } from "@/utils/FileStreamer";
 import { callRoute } from "@/utils/rpc";
 import { SerializableObject } from "@/utils/serialization";
+import { ProgressBarMessage, ProgressMessage } from "@/components/live-progress-viewer/types";
+import LiveProgressViewer from "@/components/live-progress-viewer/LiveProgressViewer";
 
 // Just development for now,
 // In the future, may need a tunnel
@@ -38,164 +28,22 @@ const ALLOWED_TYPES = {
 
 const MAX_UPLOAD_CHUNK_SIZE = 16 * 1024; // 16 kB
 
-type TextMessage = {
-  kind: "string";
-  text: string;
-  backgroundColor?: string;
-  color?: string;
-  fontWeight?: "bold" | "normal";
-  fontStyle?: "italic" | "normal";
-  fontSize?: string;
-};
-
-type ProgressBarMessage = {
-  kind: "progressBar";
-  title: string;
-  unit?: string;
-  precision?: number;
-  showAsPercent: boolean;
-  max: number;
-  current: number;
-  titleStyle: {
-    backgroundColor?: string;
-    color?: string;
-    fontWeight?: "bold" | "normal";
-    fontStyle?: "italic" | "normal";
-    fontSize?: string;
-  };
-};
-
-type ProgressMessage = TextMessage | ProgressBarMessage;
-
-const MessageText: React.FC<{ message: TextMessage }> = ({ message }) => (
-  <Div
-    width="100%"
-    background={message.backgroundColor}
-    color={message.color}
-    fontWeight={message.fontWeight}
-    fontStyle={message.fontStyle}
-    fontSize={message.fontSize}
-    padding="0.5rem"
-  >
-    <P>{message.text}</P>
-  </Div>
-);
-
-const ProgressBar: React.FC<{ message: ProgressBarMessage }> = ({
-  message,
-}) => {
-  const percentText = message.showAsPercent
-    ? ((message.current / message.max) * 100).toFixed(message.precision ?? 0) +
-      "%"
-    : message.current.toFixed(message.precision ?? 0) + (message.unit || "");
-  const widthPercent = ((message.current / message.max) * 100).toFixed(2) + "%";
-
-  return (
-    <Div
-      width="100%"
-      padding="0.5rem"
-      display="flex"
-      flexDirection="column"
-      alignItems="flex-start"
-      justifyContent="flex-start"
-      gap="0.25rem"
-    >
-      <Div
-        width="100%"
-        background={message.titleStyle.backgroundColor}
-        color={message.titleStyle.color}
-        fontWeight={message.titleStyle.fontWeight}
-        fontStyle={message.titleStyle.fontStyle}
-        fontSize={message.titleStyle.fontSize}
-      >
-        {message.title} - {percentText}
-      </Div>
-      <Div
-        width="100%"
-        background="#e0e0e0"
-        borderRadius="0.25rem"
-        height="1rem"
-      >
-        <Div
-          width={widthPercent}
-          background={message.titleStyle.color}
-          height="100%"
-          borderRadius="0.25rem"
-        />
-      </Div>
-    </Div>
-  );
-};
-
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadFinished, setUploadFinished] = useState(false);
   const [uploadFailed, setUploadFailed] = useState(false);
-  const [progressMessages, setProgressMessages] = useState<
-    Map<string, ProgressMessage>
-  >(new Map());
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const progressContainerRef = useRef<HTMLDivElement>(null);
 
-  const scrollProgressContainerToBottom = () => {
-    const container = progressContainerRef.current;
-    if (container) {
-      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
-    }
-  };
-
-  useEffect(() => {
-    scrollProgressContainerToBottom();
-  }, [progressMessages.size]);
-
-  const clearProgressMessages = (): void => {
-    setProgressMessages(() => new Map());
-  };
-
-  const addProgressMessage = (message: ProgressMessage): string => {
-    const id = uuidv4();
-    setProgressMessages((prev) => {
-      const next = new Map(prev);
-      next.set(id, message);
-      return next;
-    });
-    return id;
-  };
-
-  const deleteProgressMessageById = (id: string): void => {
-    setProgressMessages((prev) => {
-      const next = new Map(prev);
-      next.delete(id);
-      return next;
-    });
-  };
-
-  const replaceMessageById = (
-    id: string,
-    newMessage: ProgressMessage
-  ): void => {
-    setProgressMessages((prev) => {
-      const next = new Map(prev);
-      next.set(id, newMessage);
-      return next;
-    });
-  };
-
-  const updateMessageById = (
-    id: string,
-    callback: (previous: ProgressMessage) => ProgressMessage
-  ): void => {
-    setProgressMessages((prev) => {
-      const next = new Map(prev);
-      const existing = next.get(id);
-      if (!existing) return prev;
-      next.set(id, callback(existing));
-      return next;
-    });
-  };
+  const {
+    progressMessages,
+    containerRef: progressContainerRef,
+    addProgressMessage,
+    updateMessageById,
+    // … other actions
+  } = useLiveProgressViewer();
 
   const handleFiles = (files: FileList): void => {
     const selected = files[0];
@@ -265,11 +113,15 @@ export default function Home() {
         text: "Creating object...",
       });
 
-      const objectId = await callRoute<SerializableObject, string>(endpoint, "/files/upload/new-object", {
-        name: file.name,
-        mime_type: file.type,
-        size: file.size,
-      });
+      const objectId = await callRoute<SerializableObject, string>(
+        endpoint,
+        "/files/upload/new-object",
+        {
+          name: file.name,
+          mime_type: file.type,
+          size: file.size,
+        }
+      );
 
       addProgressMessage({
         kind: "string",
@@ -287,40 +139,41 @@ export default function Home() {
       });
 
       async function onChunk(blob: Blob, offset: number) {
+        const numBytesWritten = await callRoute<SerializableObject, number>(
+          endpoint,
+          "/files/upload/write-object-bytes",
+          {
+            object_id: objectId,
+            position: offset,
+            data: await blobToBase64(blob),
+          }
+        );
 
-        const numBytesWritten = await callRoute<SerializableObject, number>(endpoint,"/files/upload/write-object-bytes", {
-          object_id: objectId,
-          position: offset,
-          data: await blobToBase64(blob),
-        })
-      
-
-        if(!Number.isInteger(numBytesWritten)) {
+        if (!Number.isInteger(numBytesWritten)) {
           throw new Error(
-`
+            `
 Invalid response from server.
 Expected an integer.
 Recieved type ${typeof numBytesWritten},
 value ${numBytesWritten} instead of an integer.
 `.trim()
-          )
+          );
         }
-
 
         // Note, our custom `FileStreamer` class
         // already manages blob size to be exactly as needed,
         // even when approach the end of the file and having
         // incomplete chunks
 
-        if(numBytesWritten!==blob.size){
+        if (numBytesWritten !== blob.size) {
           throw new Error(
-`
+            `
 Invalid response from server.
 
 Expected to write exactly ${blob.size} bytes,
 Wrote ${numBytesWritten} bytes instead of ${blob.size}.
 `
-)
+          );
         }
 
         updateMessageById(progressBarId, (bar: ProgressMessage) => {
@@ -340,7 +193,7 @@ Wrote ${numBytesWritten} bytes instead of ${blob.size}.
       addProgressMessage({
         kind: "string",
         text: `Creating document metadata...`,
-      })
+      });
 
       setUploadFinished(true);
       setUploadFailed(false);
@@ -482,33 +335,16 @@ Wrote ${numBytesWritten} bytes instead of ${blob.size}.
               )}
               {error && <P color="red">{error}</P>}
             </Div>
-
             <Div
               width={
                 isUploading || uploadFinished || uploadFailed ? "45vw" : "0"
               }
               transition="width 0.3s ease-in-out"
-              ref={progressContainerRef}
-              overflowY="auto"
-              padding="1rem"
-              display="flex"
-              flexDirection="column"
-              gap="0.5rem"
             >
-              {[...progressMessages.entries()].map(([id, msg]) => (
-                <Div
-                  background="white"
-                  padding="0.25rem"
-                  boxShadow={`4px 4px 4px 0px ${theme.colors.card.body.shadow}`}
-                  borderRadius="0.5rem"
-                >
-                  {msg.kind === "string" ? (
-                    <MessageText key={id} message={msg} />
-                  ) : (
-                    <ProgressBar key={id} message={msg} />
-                  )}
-                </Div>
-              ))}
+              <LiveProgressViewer
+                ref={progressContainerRef}
+                progressMessages={progressMessages}
+              />
             </Div>
           </Div>
         </Div>

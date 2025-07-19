@@ -84,16 +84,14 @@ def setup_database(conn):
     # - mime_type: TEXT, MIME type (e.g., application/octet-stream for binary)
     # - size: BIGINT, file size in bytes recorded at upload
     # - created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    # - uploaded_at: TIMESTAMP NULL until file is stored in bucket
     # - last_modified: TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS `objects` (
             `id` CHAR(36) PRIMARY KEY NOT NULL,
             `name` TEXT NOT NULL,
-            `mime_type` TEXT,
+            `mime_type` TEXT NOT NULL,
             `size` BIGINT NOT NULL,
             `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            `uploaded_at` TIMESTAMP NULL DEFAULT NULL,
             `last_modified` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB;
     """)
@@ -113,8 +111,6 @@ def setup_database(conn):
             `title` TEXT NOT NULL,
             `author` TEXT NOT NULL,
             `description` TEXT,
-            `short_summary` TEXT,
-            `main_takeaways` TEXT,
             `object_id` CHAR(36),
             `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             `last_modified` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
