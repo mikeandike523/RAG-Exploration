@@ -10,8 +10,15 @@ import theme from "@/themes/light";
 import { FileStreamer } from "@/utils/FileStreamer";
 import { callRoute } from "@/utils/rpc";
 import { SerializableObject } from "@/utils/serialization";
-import { ProgressBarMessage, ProgressMessage } from "@/components/live-progress-viewer/types";
+import {
+  ProgressBarMessage,
+  ProgressMessage,
+} from "@/components/live-progress-viewer/types";
 import LiveProgressViewer from "@/components/live-progress-viewer/LiveProgressViewer";
+
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 
 // Just development for now,
 // In the future, may need a tunnel
@@ -28,6 +35,15 @@ const ALLOWED_TYPES = {
 
 const MAX_UPLOAD_CHUNK_SIZE = 16 * 1024; // 16 kB
 
+// Zod schema for metadata
+const metadataSchema = z.object({
+  title: z.string().nonempty("Title is required"),
+  author: z.string().nonempty("Author is required"),
+  description: z.string().optional(),
+});
+
+type MetadataForm = z.infer<typeof metadataSchema>;
+
 export default function Upload() {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,8 +58,18 @@ export default function Upload() {
     containerRef: progressContainerRef,
     addProgressMessage,
     updateMessageById,
-    // … other actions
   } = useLiveProgressViewer();
+
+  // react-hook-form setup
+  const {
+    register,
+    handleSubmit,
+    getValues,
+    formState: { errors },
+  } = useForm<MetadataForm>({
+    resolver: zodResolver(metadataSchema),
+    defaultValues: { title: "", author: "", description: "" },
+  });
 
   const handleFiles = (files: FileList): void => {
     const selected = files[0];
@@ -96,22 +122,20 @@ export default function Upload() {
     inputRef.current?.click();
   };
 
+  // Combined upload procedure including metadata
   async function uploadFile() {
+    // validate metadata before upload
+    const meta = getValues();
+    // TODO: Attach metadata (meta) to upload request
+
     if (!file) return;
     try {
       setIsUploading(true);
       setUploadFinished(false);
       setUploadFailed(false);
 
-      addProgressMessage({
-        kind: "string",
-        text: "Uploading...",
-      });
-
-      addProgressMessage({
-        kind: "string",
-        text: "Creating object...",
-      });
+      addProgressMessage({ kind: "string", text: "Uploading..." });
+      addProgressMessage({ kind: "string", text: "Creating object..." });
 
       const objectId = await callRoute<SerializableObject, string>(
         endpoint,
@@ -120,6 +144,7 @@ export default function Upload() {
           name: file.name,
           mime_type: file.type,
           size: file.size,
+          // metadata payload will be added here later
         }
       );
 
@@ -150,29 +175,12 @@ export default function Upload() {
         );
 
         if (!Number.isInteger(numBytesWritten)) {
-          throw new Error(
-            `
-Invalid response from server.
-Expected an integer.
-Recieved type ${typeof numBytesWritten},
-value ${numBytesWritten} instead of an integer.
-`.trim()
-          );
+          throw new Error(`Invalid response from server: ${numBytesWritten}`);
         }
-
-        // Note, our custom `FileStreamer` class
-        // already manages blob size to be exactly as needed,
-        // even when approach the end of the file and having
-        // incomplete chunks
 
         if (numBytesWritten !== blob.size) {
           throw new Error(
-            `
-Invalid response from server.
-
-Expected to write exactly ${blob.size} bytes,
-Wrote ${numBytesWritten} bytes instead of ${blob.size}.
-`
+            `Expected ${blob.size} bytes, wrote ${numBytesWritten}.`
           );
         }
 
@@ -189,11 +197,12 @@ Wrote ${numBytesWritten} bytes instead of ${blob.size}.
         text: `Successfully uploaded file to object ${objectId}`,
         color: "green",
       });
-
       addProgressMessage({
         kind: "string",
         text: `Creating document metadata...`,
       });
+
+      // TODO: Finalize metadata attachment
 
       setUploadFinished(true);
       setUploadFailed(false);
@@ -262,13 +271,57 @@ Wrote ${numBytesWritten} bytes instead of ${blob.size}.
               display="flex"
               flexDirection="column"
               alignItems="center"
-              justifyContent="center"
               gap="0.5rem"
               padding="1rem"
               width={
                 isUploading || uploadFinished || uploadFailed ? "30vw" : "75vw"
               }
             >
+              {/* Metadata inputs */}
+              <Div
+                display="flex"
+                flexDirection="column"
+                gap="0.5rem"
+                width="100%"
+              >
+                <input
+                  {...register("title")}
+                  placeholder="Title"
+                  style={{
+                    padding: "0.5rem",
+                    border: "1px solid #ccc",
+                    borderRadius: "0.25rem",
+                  }}
+                />
+                {errors.title && <P color="red">{errors.title.message}</P>}
+
+                <input
+                  {...register("author")}
+                  placeholder="Author"
+                  style={{
+                    padding: "0.5rem",
+                    border: "1px solid #ccc",
+                    borderRadius: "0.25rem",
+                  }}
+                />
+                {errors.author && <P color="red">{errors.author.message}</P>}
+
+                <textarea
+                  {...register("description")}
+                  rows={5}
+                  placeholder="Description (optional)"
+                  style={{
+                    padding: "0.5rem",
+                    border: "1px solid #ccc",
+                    borderRadius: "0.25rem",
+                  }}
+                />
+                {errors.description && (
+                  <P color="red">{errors.description.message}</P>
+                )}
+              </Div>
+
+              {/* File input zone */}
               <input
                 type="file"
                 accept=".txt"
@@ -282,7 +335,6 @@ Wrote ${numBytesWritten} bytes instead of ${blob.size}.
                 onClick={onClickZone}
                 cursor="pointer"
                 width="100%"
-                maxWidth="30em"
                 display="flex"
                 alignItems="center"
                 justifyContent="center"
@@ -301,6 +353,7 @@ Wrote ${numBytesWritten} bytes instead of ${blob.size}.
                     <P>Drag & drop a .txt file or click to browse</P>
                     <P>20 MB Maximum</P>
                     <P>
+                      Supported Extensions:{" "}
                       {Object.values(ALLOWED_TYPES)
                         .flatMap((t) => t.extensions)
                         .map((ext) => `.${ext}`)
@@ -309,10 +362,14 @@ Wrote ${numBytesWritten} bytes instead of ${blob.size}.
                   </Div>
                 )}
               </Div>
-              {file && (
+
+              {/* Upload button triggers both file & metadata submission */}
+              {
                 <Button
                   onClick={uploadFile}
-                  disabled={isUploading || uploadFinished || uploadFailed}
+                  disabled={
+                    !file || isUploading || uploadFinished || uploadFailed
+                  }
                   display="flex"
                   alignItems="center"
                   gap="0.5rem"
@@ -332,7 +389,7 @@ Wrote ${numBytesWritten} bytes instead of ${blob.size}.
                   </Span>
                   {isUploading && <LoadingSpinnerOverlay size="1rem" />}
                 </Button>
-              )}
+              }
               {error && <P color="red">{error}</P>}
             </Div>
             <Div
