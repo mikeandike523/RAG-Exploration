@@ -28,7 +28,7 @@ const ALLOWED_TYPES = {
 
 const MAX_UPLOAD_CHUNK_SIZE = 16 * 1024; // 16 kB
 
-export default function Home() {
+export default function Upload() {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
