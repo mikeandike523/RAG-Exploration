@@ -103,6 +103,8 @@ def setup_database(conn):
     # - author: TEXT NOT NULL
     # - description: TEXT, nullable
     # - object_id: CHAR(36), nullable, foreign key to bucket(id)
+    # - processed_object_id: CHAR(36), nullable, foreign key to bucket(id)
+    #     Starts at null, then we proprecess the document into a new object and link it 
     # - created_at: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     # - last_modified: TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     cursor.execute("""
@@ -112,9 +114,11 @@ def setup_database(conn):
             `author` TEXT NOT NULL,
             `description` TEXT,
             `object_id` CHAR(36),
+            `processed_object_id` CHAR(36) NULL DEFAULT NULL,
             `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             `last_modified` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            FOREIGN KEY (`object_id`) REFERENCES `objects` (`id`)
+            FOREIGN KEY (`object_id`) REFERENCES `objects` (`id`),
+            FOREIGN KEY (`processed_object_id`) REFERENCES `objects` (`id`)
         ) ENGINE=InnoDB;
     """)
     print("Created table: documents")

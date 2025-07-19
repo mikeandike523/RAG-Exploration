@@ -124,9 +124,6 @@ export default function Upload() {
 
   // Combined upload procedure including metadata
   async function uploadFile() {
-    // validate metadata before upload
-    const meta = getValues();
-    // TODO: Attach metadata (meta) to upload request
 
     if (!file) return;
     try {
@@ -144,7 +141,6 @@ export default function Upload() {
           name: file.name,
           mime_type: file.type,
           size: file.size,
-          // metadata payload will be added here later
         }
       );
 
@@ -202,7 +198,29 @@ export default function Upload() {
         text: `Creating document metadata...`,
       });
 
-      // TODO: Finalize metadata attachment
+      const title = getValues().title.trim();
+      const author = getValues().author.trim();
+      const description = (getValues().description??"").trim() || null
+
+      const documentId = await callRoute<SerializableObject, void>(endpoint, "/documents/create", {
+        title,
+        author,
+        description,
+        object_id: objectId,
+      })
+
+      addProgressMessage({
+        kind: "string",
+        text: `Created document with id ${documentId}`,
+        color: "green",
+      });
+
+      addProgressMessage({
+        kind: "string",
+        text: "Preprocessing document...",
+      })
+
+
 
       setUploadFinished(true);
       setUploadFailed(false);
