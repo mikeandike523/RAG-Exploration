@@ -27,6 +27,7 @@ from src.utils.project_structure import get_project_root
 from backend.short_tasks.files.upload.new_object import task_new_object
 from backend.short_tasks.files.upload.write_object_bytes import task_write_object_bytes
 from backend.short_tasks.documents.create import task_create as task_create_document
+from backend.short_tasks.documents.preprocess import task_preprocess
 
 project_root = get_project_root()
 
@@ -139,6 +140,7 @@ def register_short_task(name: str, fn: Callable[[Any], Any]):
 register_short_task("/files/upload/new-object", task_new_object)
 register_short_task("/files/upload/write-object-bytes", task_write_object_bytes)
 register_short_task("/documents/create", task_create_document)
+register_short_task("/documents/preprocess", task_preprocess)
 
 
 app_resources = AppResources(

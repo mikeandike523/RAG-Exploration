@@ -220,6 +220,20 @@ export default function Upload() {
         text: "Preprocessing document...",
       })
 
+      await callRoute<SerializableObject, string>(
+        endpoint,
+        "/documents/preprocess",
+        {
+          document_id: documentId,
+        }
+      )
+
+      addProgressMessage({
+        kind: "string",
+        text: "Preprocessing complete.",
+        color: "green",
+      })
+
 
 
       setUploadFinished(true);
