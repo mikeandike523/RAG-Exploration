@@ -202,7 +202,7 @@ export default function Upload() {
       const author = getValues().author.trim();
       const description = (getValues().description??"").trim() || null
 
-      const documentId = await callRoute<SerializableObject, void>(endpoint, "/documents/create", {
+      const documentId = await callRoute<SerializableObject, string>(endpoint, "/documents/create", {
         title,
         author,
         description,
