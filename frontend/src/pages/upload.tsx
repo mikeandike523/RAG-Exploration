@@ -19,6 +19,7 @@ import LiveProgressViewer from "@/components/live-progress-viewer/LiveProgressVi
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { css } from "@emotion/react";
 
 // Just development for now,
 // In the future, may need a tunnel
@@ -35,22 +36,46 @@ const ALLOWED_TYPES = {
 
 const MAX_UPLOAD_CHUNK_SIZE = 16 * 1024; // 16 kB
 
+const buttonInteractionCss = css`
+  transformorigin: center;
+  transition: transform 0.1s ease-in-out;
+  cursor: pointer;
+  transform: scale(1);
+
+  /* only apply scale effects when not disabled */
+  &:not(:disabled):hover {
+    transform: scale(1.05);
+  }
+  &:not(:disabled):active {
+    transform: scale(0.95);
+  }
+
+  /* disabled styling */
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.4; /* optional visual cue */
+  }
+`;
+
 // Zod schema for metadata
-const metadataSchema = z.object({
+const uplaodFormSchema = z.object({
+  file: z
+    .instanceof(File, { message: "A file is required" })
+    .refine(
+      (f) => f.size <= MAX_FILE_SIZE,
+      `File must be ≤ ${MAX_FILE_SIZE / (1024 * 1024)}MB`
+    )
+    .refine(
+      (f) => Object.keys(ALLOWED_TYPES).includes(f.type),
+      "Unsupported file type"
+    ),
   title: z.string().nonempty("Title is required"),
   author: z.string().nonempty("Author is required"),
   description: z.string().optional(),
 });
-
-type MetadataForm = z.infer<typeof metadataSchema>;
+type UploadFormData = z.infer<typeof uplaodFormSchema>;
 
 export default function Upload() {
-  const [file, setFile] = useState<File | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadFinished, setUploadFinished] = useState(false);
-  const [uploadFailed, setUploadFailed] = useState(false);
-
   const inputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -58,60 +83,41 @@ export default function Upload() {
     containerRef: progressContainerRef,
     addProgressMessage,
     updateMessageById,
+    clearProgressMessages,
   } = useLiveProgressViewer();
 
   // react-hook-form setup
   const {
     register,
     handleSubmit,
-    getValues,
-    formState: { errors },
-  } = useForm<MetadataForm>({
-    resolver: zodResolver(metadataSchema),
-    defaultValues: { title: "", author: "", description: "" },
+    setValue,
+    watch,
+    reset,
+    formState: {
+      errors,
+      isValid,
+      isSubmitting,
+      isSubmitSuccessful,
+      isSubmitted,
+    },
+  } = useForm<UploadFormData>({
+    resolver: zodResolver(uplaodFormSchema),
+    defaultValues: { title: "", author: "", description: "", file: undefined },
+    mode: "onChange", // get live `isValid`
   });
 
-  const handleFiles = (files: FileList): void => {
+  const currentlySelectedFile = watch("file");
+
+  const handleFilePicker = (files: FileList): void => {
     const selected = files[0];
     if (!selected) return;
-
-    if (!selected.name.includes(".")) {
-      setError("Invalid file name. Please include a valid file extension.");
-      setFile(null);
-      return;
-    }
-
-    if (
-      !Object.values(ALLOWED_TYPES)
-        .flatMap((t) => t.extensions)
-        .includes(selected.name.split(".").pop() ?? "")
-    ) {
-      setError(
-        `Unsupported file extension ${selected.name.split(".").pop() ?? ""})`
-      );
-      setFile(null);
-      return;
-    }
-
-    if (!Object.keys(ALLOWED_TYPES).includes(selected.type)) {
-      setError(`Unsupported file type ${selected.type}.`);
-      setFile(null);
-      return;
-    }
-
-    if (selected.size > MAX_FILE_SIZE) {
-      setError("File is too large. Maximum allowed size is 20MB.");
-      setFile(null);
-      return;
-    }
-
-    setError(null);
-    setFile(selected);
+    // let Zod catch invalid name/size/type
+    setValue("file", selected, { shouldValidate: true, shouldDirty: true });
   };
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    handleFiles(e.dataTransfer.files);
+    handleFilePicker(e.dataTransfer.files);
   };
 
   const onDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -123,13 +129,13 @@ export default function Upload() {
   };
 
   // Combined upload procedure including metadata
-  async function uploadFile() {
+  async function onSubmit(data: UploadFormData) {
+    const file = data.file;
+    const title = data.title;
+    const author = data.author;
+    const description = data.description;
 
-    if (!file) return;
     try {
-      setIsUploading(true);
-      setUploadFinished(false);
-      setUploadFailed(false);
 
       addProgressMessage({ kind: "string", text: "Uploading..." });
       addProgressMessage({ kind: "string", text: "Creating object..." });
@@ -198,16 +204,16 @@ export default function Upload() {
         text: `Creating document metadata...`,
       });
 
-      const title = getValues().title.trim();
-      const author = getValues().author.trim();
-      const description = (getValues().description??"").trim() || null
-
-      const documentId = await callRoute<SerializableObject, string>(endpoint, "/documents/create", {
-        title,
-        author,
-        description,
-        object_id: objectId,
-      })
+      const documentId = await callRoute<SerializableObject, string>(
+        endpoint,
+        "/documents/create",
+        {
+          title,
+          author,
+          description: description || null,
+          object_id: objectId,
+        }
+      );
 
       addProgressMessage({
         kind: "string",
@@ -218,7 +224,7 @@ export default function Upload() {
       addProgressMessage({
         kind: "string",
         text: "Preprocessing document...",
-      })
+      });
 
       await callRoute<SerializableObject, string>(
         endpoint,
@@ -226,29 +232,23 @@ export default function Upload() {
         {
           document_id: documentId,
         }
-      )
+      );
 
       addProgressMessage({
         kind: "string",
         text: "Preprocessing complete.",
         color: "green",
-      })
-
-
-
-      setUploadFinished(true);
-      setUploadFailed(false);
+      });
     } catch (err) {
       console.error(err);
+
       addProgressMessage({
         kind: "string",
         text: "Upload failed.",
         color: "red",
       });
-      setUploadFailed(true);
-      setUploadFinished(false);
-    } finally {
-      setIsUploading(false);
+
+      throw err;
     }
   }
 
@@ -283,7 +283,9 @@ export default function Upload() {
           <H1
             width="100%"
             fontSize="3rem"
-            padding="1rem"
+            // padding="1rem"
+            height="5rem"
+            lineHeight="5rem"
             textAlign="center"
             background={theme.colors.card.header.bg}
             color={theme.colors.card.header.text}
@@ -305,10 +307,54 @@ export default function Upload() {
               alignItems="center"
               gap="0.5rem"
               padding="1rem"
-              width={
-                isUploading || uploadFinished || uploadFailed ? "30vw" : "75vw"
-              }
+              width={isSubmitted || isSubmitting ? "30vw" : "75vw"}
             >
+              <input
+                type="file"
+                accept=".txt"
+                {...register("file")}
+                style={{ display: "none" }}
+                onChange={(e) => handleFilePicker(e.target.files!)}
+                ref={inputRef}
+              />
+              {errors.file && <P color="red">{errors.file.message}</P>}
+              <Div
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                onClick={onClickZone}
+                cursor="pointer"
+                width="auto"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                border="2px dashed black"
+                borderRadius="0.5rem"
+                padding="1rem"
+                background="white"
+              >
+                {currentlySelectedFile ? (
+                  <Div textAlign="center">
+                    <P>{currentlySelectedFile.name}</P>
+                    <P>
+                      {(currentlySelectedFile.size / (1024 * 1024)).toFixed(2)}{" "}
+                      MB
+                    </P>
+                  </Div>
+                ) : (
+                  <Div textAlign="center">
+                    <P>Drag & drop a .txt file or click to browse</P>
+                    <P>20 MB Maximum</P>
+                    <P>
+                      Supported Extensions:{" "}
+                      {Object.values(ALLOWED_TYPES)
+                        .flatMap((t) => t.extensions)
+                        .map((ext) => `.${ext}`)
+                        .join(", ")}
+                    </P>
+                  </Div>
+                )}
+              </Div>
+
               {/* Metadata inputs */}
               <Div
                 display="flex"
@@ -353,84 +399,88 @@ export default function Upload() {
                 )}
               </Div>
 
-              {/* File input zone */}
-              <input
-                type="file"
-                accept=".txt"
-                ref={inputRef}
-                style={{ display: "none" }}
-                onChange={(e) => handleFiles(e.target.files!)}
-              />
-              <Div
-                onDrop={onDrop}
-                onDragOver={onDragOver}
-                onClick={onClickZone}
-                cursor="pointer"
-                width="100%"
+              <Button
+                onClick={() => {
+                  handleSubmit(onSubmit)();
+                }}
+                disabled={!isValid || isSubmitting || isSubmitted}
                 display="flex"
                 alignItems="center"
-                justifyContent="center"
-                border="2px dashed black"
+                gap="0.5rem"
+                padding="0.5rem 1rem"
                 borderRadius="0.5rem"
-                padding="1rem"
+                border="2px solid blue"
+                color="blue"
                 background="white"
+                boxShadow={`4px 4px 4px 0px ${theme.colors.card.body.shadow}`}
+                position="relative"
+                css={buttonInteractionCss}
               >
-                {file ? (
-                  <Div textAlign="center">
-                    <P>{file.name}</P>
-                    <P>{(file.size / (1024 * 1024)).toFixed(2)} MB</P>
-                  </Div>
-                ) : (
-                  <Div textAlign="center">
-                    <P>Drag & drop a .txt file or click to browse</P>
-                    <P>20 MB Maximum</P>
-                    <P>
-                      Supported Extensions:{" "}
-                      {Object.values(ALLOWED_TYPES)
-                        .flatMap((t) => t.extensions)
-                        .map((ext) => `.${ext}`)
-                        .join(", ")}
-                    </P>
-                  </Div>
-                )}
-              </Div>
+                <MdCloudUpload />
+                <Span>
+                  {isSubmitting
+                    ? "Uploading…"
+                    : isSubmitSuccessful
+                    ? "Upload Complete."
+                    : isSubmitted && !isSubmitSuccessful
+                    ? "Upload Failed."
+                    : "Upload"}
+                </Span>
+                {isSubmitting && <LoadingSpinnerOverlay size="1rem" />}
+              </Button>
 
-              {/* Upload button triggers both file & metadata submission */}
-              {
+              {isSubmitted && !isSubmitSuccessful && (
                 <Button
-                  onClick={uploadFile}
-                  disabled={
-                    !file || isUploading || uploadFinished || uploadFailed
-                  }
-                  display="flex"
-                  alignItems="center"
-                  gap="0.5rem"
-                  padding="0.5rem 1rem"
-                  borderRadius="0.5rem"
-                  position="relative"
+                  fontSize="1rem"
+                  onClick={() => {
+                    // 1) reset submission state, keep the current field values:
+                    reset(undefined, {
+                      keepValues: true,
+                      keepErrors: true,
+                      keepDirty: true,
+                      keepTouched: true,
+                      keepIsValid: true,
+                      // submitCount will reset to 0 so isSubmitted → false
+                      keepSubmitCount: false,
+                    });
+
+                    // 2) immediately re‑invoke your submit handler
+                    handleSubmit(onSubmit)();
+                  }}
+                  border="none"
+                  color="red"
+                  background="transparent"
+                  css={buttonInteractionCss}
+                  textDecoration="underline"
                 >
-                  <MdCloudUpload />
-                  <Span>
-                    {isUploading
-                      ? "Uploading..."
-                      : uploadFailed
-                      ? "Upload Failed."
-                      : uploadFinished
-                      ? "Upload Complete."
-                      : "Upload"}
-                  </Span>
-                  {isUploading && <LoadingSpinnerOverlay size="1rem" />}
+                  Try Again
                 </Button>
-              }
-              {error && <P color="red">{error}</P>}
+              )}
+              {(isSubmitSuccessful || (isSubmitted && !isSubmitSuccessful)) && (
+                <Button
+                  fontSize="1rem"
+                  onClick={() => {
+                    reset(); // ← wipe back to defaultValues
+                    clearProgressMessages();
+                  }}
+                  border="none"
+                  color="blue"
+                  background="transparent"
+                  css={buttonInteractionCss}
+                  textDecoration="underline"
+                >
+                  Upload Another
+                </Button>
+              )}
             </Div>
             <Div
-              width={
-                isUploading || uploadFinished || uploadFailed ? "45vw" : "0"
-              }
+              width={isSubmitted || isSubmitting ? "45vw" : "0"}
               transition="width 0.3s ease-in-out"
             >
               <LiveProgressViewer
+                width="100%"
+                height="calc(75vh - 5rem)"
+
                 ref={progressContainerRef}
                 progressMessages={progressMessages}
               />

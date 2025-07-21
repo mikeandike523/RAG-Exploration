@@ -1,15 +1,13 @@
 import React, { forwardRef } from 'react';
-import { Div, P } from 'style-props-html';
+import { Div, P, DivProps } from 'style-props-html';
 import {
   TextMessage,
   ProgressBarMessage,
   ProgressMessage,
 } from './types';
 
-interface LiveProgressViewerProps {
+interface LiveProgressViewerProps extends DivProps{
   progressMessages: Map<string, ProgressMessage>;
-  /** When false, viewer collapses to zero width */
-  isVisible?: boolean;
 }
 
 /** Renders a plain-text message */
@@ -72,9 +70,8 @@ const ProgressBar: React.FC<{ message: ProgressBarMessage }> = ({
  * Accepts a Map of messages and a ref for auto‐scrolling.
  */
 const LiveProgressViewer = forwardRef<HTMLDivElement, LiveProgressViewerProps>(
-  ({ progressMessages, isVisible = true }, ref) => (
+  ({ progressMessages, ...rest }, ref) => (
     <Div
-      width={isVisible ? '45vw' : '0'}
       transition="width 0.3s ease-in-out"
       ref={ref}
       overflowY="auto"
@@ -82,6 +79,7 @@ const LiveProgressViewer = forwardRef<HTMLDivElement, LiveProgressViewerProps>(
       display="flex"
       flexDirection="column"
       gap="0.5rem"
+      {...rest}
     >
       {[...progressMessages.entries()].map(([id, msg]) => (
         <Div
