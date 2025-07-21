@@ -1,5 +1,6 @@
 from typing import Dict, List
 import os
+import re
 import uuid
 from pydantic import BaseModel, StrictStr, ValidationError, validator
 
@@ -26,21 +27,35 @@ class PreprocessParams(BaseModel):
 
 
 def _clean_text(text: str) -> str:
-    """Apply preprocessing similar to scripts/clean_text_file.py."""
-    normalized = text.replace("\r\n", "\n").replace("\r", "")
-    normalized = normalized.replace("\n" + "\u000C", "")
-    lines = normalized.splitlines()
-    cleaned_lines: List[str] = []
-    for line in lines:
-        clean_line = line.replace(PARAGRAPH_SEPARATOR, "\n").replace(
-            SECTION_SEPARATOR, "\n\n"
-        )
-        for ws in EXOTIC_WHITESPACE:
-            clean_line = clean_line.replace(ws, "")
-        if clean_line.strip() == "":
-            clean_line = ""
-        cleaned_lines.append(clean_line)
-    cleaned = "\n".join(cleaned_lines).strip()
+    """Preprocess raw text according to the backend pipeline."""
+    # Step 1: Replace CRLF with LF
+    cleaned = text.replace("\r\n", "\n")
+
+    # Step 2: Remove stray carriage returns
+    cleaned = cleaned.replace("\r", "")
+
+    # Step 3: Convert/remove exotic whitespace characters
+    cleaned = cleaned.replace(PARAGRAPH_SEPARATOR, "\n").replace(
+        SECTION_SEPARATOR, "\n\n"
+    )
+    cleaned = cleaned.replace("\n" + "\u000C", "")
+    for ws in EXOTIC_WHITESPACE:
+        cleaned = cleaned.replace(ws, "")
+
+    # Step 4: Remove all non-printing, non-whitespace characters
+    cleaned = "".join(c for c in cleaned if c.isprintable() or c.isspace())
+
+    # Step 5: Trim whitespace off start and end of entire document
+    cleaned = cleaned.strip()
+
+    # Step 6: Trim whitespace for each line
+    lines = cleaned.split("\n")
+    trimmed_lines = [line.strip() for line in lines]
+    cleaned = "\n".join(trimmed_lines)
+
+    # Step 7: Condense runs of >2 newlines to exactly two
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+
     return cleaned
 
 
