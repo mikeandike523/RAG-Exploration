@@ -150,8 +150,6 @@ def task_ingest_sentences(
         batch = points[i : i + QDRANT_UPLOAD_BATCH_SIZE]
         qdrant_client.upsert(collection_name=processed_object_id, points=batch)
 
-    ctx.emit_update("Sentence ingestion complete")
-
     return {
         "num_embedded_sentences": num_embedded_sentences,
         "num_blank_lines": num_blank_lines,

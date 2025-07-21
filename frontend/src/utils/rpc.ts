@@ -77,7 +77,7 @@ export async function callRoute<
   timeout?: number
 ): Promise<TRet> {
   try {
-    const response = await fetch(endpoint.replace(/\/+$/g, "")+"/run", {
+    const response = await fetch(endpoint.replace(/\/+$/g, "") + "/run", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -155,19 +155,22 @@ export async function callLiveRoute<
   timeout?: number
 ): Promise<TRet> {
   try {
-    const taskBeginResponse = await fetch(endpoint.replace(/\/+$/g, "")+"/begin", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ task: route, args }),
-      // signal:
-      //   typeof AbortSignal === "undefined"
-      //     ? undefined
-      //     : timeout
-      //     ? AbortSignal.timeout(timeout)
-      //     : undefined,
-    });
+    const taskBeginResponse = await fetch(
+      endpoint.replace(/\/+$/g, "") + "/begin",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ task: route, args }),
+        // signal:
+        //   typeof AbortSignal === "undefined"
+        //     ? undefined
+        //     : timeout
+        //     ? AbortSignal.timeout(timeout)
+        //     : undefined,
+      }
+    );
     const responseBody = await taskBeginResponse.text();
     const responseBodyAsJSON = safeParse(responseBody);
     if (!taskBeginResponse.ok) {
@@ -202,7 +205,16 @@ export async function callLiveRoute<
       task_id: string;
     };
     return await new Promise((resolve, reject) => {
-      const socket: Socket = io();
+
+      const url = new URL(endpoint);
+
+      const socketBase = url.origin; // e.g. "http://localhost:5000"
+
+      // now point socket.io at port 5000
+      const socket: Socket = io(socketBase, {
+        path: "/socket.io", // only if your server uses the default path
+        // transports: ["websocket"],               // optional: force WebSocket
+      });
 
       socket.on("connect", () => {
         socket.emit("join", { task_id });

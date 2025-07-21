@@ -35,21 +35,17 @@ from backend.long_tasks.documents.ingest_sentences import task_ingest_sentences
 
 project_root = get_project_root()
 
-
 backend_folder = os.path.join(project_root, "backend")
 
 logs_folder = os.path.join(backend_folder, "logs")
 
 logs_file_debug = os.path.join(logs_folder, "debug.txt")
 
-with open(logs_file_debug, "w") as fl:
-    fl.write("")
-
-
 def print_to_debug_log(message, *args, **kwargs):
     with open(logs_file_debug, "a") as fl:
-        print(message, *args, file=fl, **kwargs)
+        print(message, *args, file=fl, flush=True, **kwargs)
 
+print_to_debug_log("Loading env vars...")
 
 env_vars = dotenv_values(os.path.join(os.path.dirname(__file__), ".env"))
 
@@ -69,6 +65,10 @@ qdrant_env_vars = dotenv_values(
     os.path.join(os.path.dirname(__file__), "..", "servers", "qdrant", ".env")
 )
 
+print_to_debug_log("Done.")
+
+print_to_debug_log("Connecting to MySQL...")
+
 mysql_conn = mysql.connector.connect(
     host=mysql_env_vars.get("MYSQL_HOST", "localhost"),
     port=int(mysql_env_vars.get("MYSQL_PORT", 3306)),
@@ -77,15 +77,29 @@ mysql_conn = mysql.connector.connect(
     database=mysql_env_vars["MYSQL_DATABASE"],
 )
 
+print_to_debug_log("Done.")
+
+print_to_debug_log("Connecting to Qdrant...")
+
 qdrant_client = QdrantClient(
     url=f"http://localhost:{qdrant_env_vars['QDRANT_HTTP_PORT']}"
 )
 
+print_to_debug_log("Done.")
+
+print_to_debug_log("Loading SentenceTransformer (all-MiniLM-L6-v2)...")
+
 # Use GPU0 specifically, not any other GPU
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2", device="cuda:0")
 
+print("Done.")
+
+print("Structuring app and defining routes...")
+
 app = Flask(__name__)
+
 app.config["SECRET_KEY"] = env_vars["SECRET_KEY"]
+
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
@@ -159,7 +173,7 @@ register_short_task("/documents/create", task_create_document)
 register_short_task("/documents/preprocess", task_preprocess)
 
 
-register_long_task("documents/ingest-sentences", task_ingest_sentences)
+register_long_task("/documents/ingest-sentences", task_ingest_sentences)
 
 
 app_resources = AppResources(
@@ -172,19 +186,31 @@ app_resources = AppResources(
 
 @app.route("/run", methods=["POST"])
 def run_short_task():
-    print_to_debug_log(colored("Received new request:", "green"))
     body_text = request.get_data(as_text=True)
 
     try:
         data = json.loads(body_text)
     except json.JSONDecodeError:
-        return jsonify({"error": "Invalid JSON format"}), 400
+        print_to_debug_log(colored(f'/run -- Bad Input Data', "red"))
+        return jsonify({"error": "Bad input data. Request body must eb valid JSON."}), 400
+
+    if not isinstance(data, dict) or "task" not in data:
+        print_to_debug_log(colored(f'/run -- Bad Input Data', "red"))
+        return jsonify({"error": "Bad input data. Requestion body must be a JSON object with `task` and optionally `args` field."}), 400
 
     task_name = data.get("task")
-    args = data.get("args", None)
 
     if task_name not in SHORT_TASKS:
-        return jsonify({"error": f"Unknown task '{task_name}'"}), 400
+        print_to_debug_log(colored(f'/run -- Unknown Task "{task_name}"', "red"))
+        return jsonify({"error": f"Bad input data. Unknown task '{task_name}'"}), 400
+
+    args = data.get("args", None)
+
+    if args is not None:
+        print_to_debug_log(colored(f'/run -- Starting task "{task_name}", input args type="{type(args)}"', "blue"))
+    else:
+        print_to_debug_log(colored(f'/run -- Starting task "{task_name}", no input args', "blue"))
+
 
     handler = SHORT_TASKS[task_name]
 
@@ -219,34 +245,64 @@ def run_short_task():
 
 @app.route("/begin", methods=["POST"])
 def begin_task():
-    data = request.get_json(force=True)
+    body_text = request.get_data(as_text=True)
+
+    try:
+        data = json.loads(body_text)
+    except json.JSONDecodeError:
+        print_to_debug_log(colored(f'/begin -- Bad Input Data', "red"))
+        return jsonify({"error": "Bad input data. Request body must be valid JSON."}), 400
+
+    if not isinstance(data, dict) or "task" not in data:
+        print_to_debug_log(colored(f'/begin -- Bad Input Data', "red"))
+        return jsonify({"error": "Bad input data. Request body must be a JSON object with `task` and optionally `args` field."}), 400
+
     task_name = data.get("task")
     args = data.get("args", None)
 
     if task_name not in LONG_TASKS:
-        return jsonify({"error": f"Unknown task '{task_name}'"}), 400
+        print_to_debug_log(colored(f'/begin -- Unknown Task "{task_name}"', "red"))
+        return jsonify({"error": f"Bad input data. Unknown task '{task_name}'"}), 400
+
+    if args is not None:
+        print_to_debug_log(colored(f"/begin -- Starting long task '{task_name}', input args type='{type(args)}'", "blue"))
+    else:
+        print_to_debug_log(colored(f"/begin -- Starting long task '{task_name}', no input args", "blue"))
 
     task_id = f"{task_name}:{uuid.uuid4()}"
-    socketio.start_background_task(_run_long_task, task_name, task_id, args)
+
+    try:
+        socketio.start_background_task(_run_long_task, task_name, task_id, args)
+    except Exception as exc:
+        print_to_debug_log(colored(f"/begin -- Failed to start background task '{task_name}': {str(exc)}", "red"))
+        print_to_debug_log(colored("Traceback:", "red"))
+        print_to_debug_log(traceback.format_exc())
+        return jsonify({"error": "An unknown server error occurred. Please try again later."}), 500
 
     return jsonify({"task_id": task_id}), 202
 
 
 def _run_long_task(task_name: str, task_id: str, args: dict):
-
     ctx = TaskContext(room=task_id, socketio=socketio)
     handler = LONG_TASKS[task_name]
 
     try:
+        print_to_debug_log(colored(f"_run_long_task -- Running '{task_name}' with task_id='{task_id}'", "blue"))
         result = handler(ctx, args, app_resources)
         ctx.emit_success(result)
+        print_to_debug_log(colored(f"_run_long_task -- Completed '{task_name}' task_id='{task_id}'", "green"))
     except FatalTaskError as exc:
         ctx.emit_fatal_error(str(exc), cause=exc.cause)
+        print_to_debug_log(colored(f"_run_long_task -- FatalTaskError in '{task_name}' task_id='{task_id}': {str(exc)}", "red"))
+        if exc.cause:
+            print_to_debug_log(colored(f"Cause: {exc.cause}", "red"))
+        print_to_debug_log(colored("Traceback:", "red"))
+        print_to_debug_log(traceback.format_exc())
     except Exception as exc:
-        ctx.emit_fatal_error("An unknown server error occured. Please try again later.")
-        print_to_debug_log(colored(f"Server error occured upon user request: {str(exc)}", "red"))
-        print_to_debug_log(colored(f"Traceback:", "red"))
-        print_to_debug_log(traceback.print_exc())
+        ctx.emit_fatal_error("An unknown server error occurred. Please try again later.")
+        print_to_debug_log(colored(f"_run_long_task -- Unknown error in '{task_name}' task_id='{task_id}': {str(exc)}", "red"))
+        print_to_debug_log(colored("Traceback:", "red"))
+        print_to_debug_log(traceback.format_exc())
 
 
 @socketio.on("join")
@@ -257,8 +313,11 @@ def on_join(data):
         return
 
     join_room(task_id)
-    emit("update", asdict(UpdateResponse(message=f"Joined room {task_id}")))
 
+print_to_debug_log("Done.")
 
 if __name__ == "__main__":
+
+    print_to_debug_log("Running main procedure...")
     socketio.run(app, host="localhost", port=env_vars.get("PORT", 5000), debug=True)
+    print("Done running main procedure.")

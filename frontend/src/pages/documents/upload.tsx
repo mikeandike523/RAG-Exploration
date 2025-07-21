@@ -136,10 +136,6 @@ export default function Upload() {
     const description = data.description;
 
     try {
-
-      addProgressMessage({ kind: "string", text: "Uploading..." });
-      addProgressMessage({ kind: "string", text: "Creating object..." });
-
       const objectId = await callRoute<SerializableObject, string>(
         endpoint,
         "/files/upload/new-object",
@@ -150,14 +146,9 @@ export default function Upload() {
         }
       );
 
-      addProgressMessage({
-        kind: "string",
-        text: `Created object with id ${objectId}`,
-      });
-
       const progressBarId = addProgressMessage({
         kind: "progressBar",
-        title: "Uploading",
+        title: "Uploading file data...",
         showAsPercent: true,
         max: file.size,
         current: 0,
@@ -196,12 +187,8 @@ export default function Upload() {
 
       addProgressMessage({
         kind: "string",
-        text: `Successfully uploaded file to object ${objectId}`,
+        text: `Successfully uploaded file data...`,
         color: "green",
-      });
-      addProgressMessage({
-        kind: "string",
-        text: `Creating document metadata...`,
       });
 
       const documentId = await callRoute<SerializableObject, string>(
@@ -214,12 +201,6 @@ export default function Upload() {
           object_id: objectId,
         }
       );
-
-      addProgressMessage({
-        kind: "string",
-        text: `Created document with id ${documentId}`,
-        color: "green",
-      });
 
       addProgressMessage({
         kind: "string",
@@ -240,11 +221,9 @@ export default function Upload() {
         color: "green",
       });
 
-      addProgressMessage({ kind: "string", text: "Ingesting sentences..." });
-
       const ingestBarId = addProgressMessage({
         kind: "progressBar",
-        title: "Sentence Ingestion",
+        title: "Ingesting sentences...",
         showAsPercent: true,
         max: 1,
         current: 0,
@@ -253,30 +232,52 @@ export default function Upload() {
 
       const ingestResult = await callLiveRoute<
         SerializableObject,
-        { num_embedded_sentences: number; num_blank_lines: number; total_line_count: number }
-      >(endpoint, "/documents/ingest-sentences", { document_id: documentId }, {
-        onProgress: (p) => {
-          updateMessageById(ingestBarId, (bar: ProgressMessage) => {
-            (bar as ProgressBarMessage).current = p.current;
-            (bar as ProgressBarMessage).max = p.total;
-            return bar;
-          });
-        },
-        onUpdate: (u) => {
-          addProgressMessage({ kind: "string", text: u.message });
-        },
-        onError: (e) => {
-          addProgressMessage({ kind: "string", text: e.message, color: "red" });
-        },
-        onFatalError: (e) => {
-          addProgressMessage({ kind: "string", text: e.message, color: "red" });
-        },
+        {
+          num_embedded_sentences: number;
+          num_blank_lines: number;
+          total_line_count: number;
+        }
+      >(
+        endpoint,
+        "/documents/ingest-sentences",
+        { document_id: documentId },
+        {
+          onProgress: (p) => {
+            updateMessageById(ingestBarId, (bar: ProgressMessage) => {
+              (bar as ProgressBarMessage).current = p.current;
+              (bar as ProgressBarMessage).max = p.total;
+              return bar;
+            });
+          },
+          onUpdate: (u) => {
+            addProgressMessage({ kind: "string", text: u.message });
+          },
+          onError: (e) => {
+            addProgressMessage({
+              kind: "string",
+              text: e.message,
+              color: "red",
+            });
+          },
+          onFatalError: (e) => {
+            addProgressMessage({
+              kind: "string",
+              text: e.message,
+              color: "red",
+            });
+          },
+        }
+      );
+
+      addProgressMessage({
+        kind: "string",
+        text: `Ingested ${ingestResult.num_embedded_sentences} sentences with ${ingestResult.num_blank_lines} blank lines (total ${ingestResult.total_line_count}).`,
+        color: "green",
       });
 
       addProgressMessage({
         kind: "string",
-        text:
-          `Ingested ${ingestResult.num_embedded_sentences} sentences with ${ingestResult.num_blank_lines} blank lines (total ${ingestResult.total_line_count}).`,
+        text: "Document uploaded and processed successfully.",
         color: "green",
       });
     } catch (err) {
@@ -284,7 +285,7 @@ export default function Upload() {
 
       addProgressMessage({
         kind: "string",
-        text: "Upload failed.",
+        text: "Document upload and processing failed.",
         color: "red",
       });
 
@@ -523,7 +524,6 @@ export default function Upload() {
               <LiveProgressViewer
                 width="100%"
                 height="calc(75vh - 5rem)"
-
                 ref={progressContainerRef}
                 progressMessages={progressMessages}
               />
