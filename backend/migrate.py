@@ -2,12 +2,17 @@ import click
 import os
 import mysql.connector
 from dotenv import dotenv_values
+from qdrant_client import QdrantClient
 
 from src.utils.project_structure import get_project_root
 
 project_root = get_project_root()
 
 bucket_folder = os.path.join(project_root, "bucket")
+
+qdrant_env_vars = dotenv_values(os.path.join(project_root, "servers", "qdrant", ".env"))
+
+qdrant_client = QdrantClient(url=f"http://localhost:{qdrant_env_vars['QDRANT_HTTP_PORT']}")
 
 def clear_database(conn):
     """
@@ -156,6 +161,10 @@ def migrate(yes):
     print("Setting up database schema...")
     setup_database(conn)
 
+
+    conn.close()
+
+
     print("Clearing old bucket files...")
     bucket_files = os.listdir(bucket_folder)
     for file in bucket_files:
@@ -163,8 +172,25 @@ def migrate(yes):
     print(f"Removed {len(bucket_files)} old bucket files.")
 
 
+    print("Deleting all qdrant collections...")
 
-    conn.close()
+    # Retrieve list of existing collections
+    collections_response = qdrant_client.get_collections()
+
+    # Depending on the client version, collections may live under .collections or .result.collections
+    collections = getattr(collections_response, "collections", None)
+
+    if not collections:
+        collections = []
+
+    print(f"Found {len(collections)} collections")
+
+    # Delete each one
+    for coll in collections:
+        coll_name = coll.name
+        qdrant_client.delete_collection(collection_name=coll_name)
+        print(f"Deleted Qdrant collection: {coll_name}")
+
     click.echo("Migration complete.")
 
 if __name__ == "__main__":

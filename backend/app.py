@@ -20,6 +20,8 @@ import os
 import traceback
 from termcolor import colored
 import mysql.connector
+from qdrant_client import QdrantClient
+from sentence_transformers import SentenceTransformer
 
 
 from src.utils.project_structure import get_project_root
@@ -28,6 +30,8 @@ from backend.short_tasks.files.upload.new_object import task_new_object
 from backend.short_tasks.files.upload.write_object_bytes import task_write_object_bytes
 from backend.short_tasks.documents.create import task_create as task_create_document
 from backend.short_tasks.documents.preprocess import task_preprocess
+
+from backend.long_tasks.documents.ingest_sentences import task_ingest_sentences
 
 project_root = get_project_root()
 
@@ -60,6 +64,11 @@ redis_url = f"redis://{redis_env_vars['REDIS_HOST']}:{redis_env_vars['REDIS_PORT
 mysql_env_vars = dotenv_values(
     os.path.join(os.path.dirname(__file__), "..", "servers", "mysql", ".env")
 )
+
+qdrant_env_vars = dotenv_values(
+    os.path.join(os.path.dirname(__file__), "..", "servers", "qdrant", ".env")
+)
+
 mysql_conn = mysql.connector.connect(
     host=mysql_env_vars.get("MYSQL_HOST", "localhost"),
     port=int(mysql_env_vars.get("MYSQL_PORT", 3306)),
@@ -67,6 +76,13 @@ mysql_conn = mysql.connector.connect(
     password=mysql_env_vars["MYSQL_PASSWORD"],
     database=mysql_env_vars["MYSQL_DATABASE"],
 )
+
+qdrant_client = QdrantClient(
+    url=f"http://localhost:{qdrant_env_vars['QDRANT_HTTP_PORT']}"
+)
+
+# Use GPU0 specifically, not any other GPU
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2", device="cuda:0")
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = env_vars["SECRET_KEY"]
@@ -143,10 +159,15 @@ register_short_task("/documents/create", task_create_document)
 register_short_task("/documents/preprocess", task_preprocess)
 
 
+register_long_task("documents/ingest-sentences", task_ingest_sentences)
+
+
 app_resources = AppResources(
     mysql_conn=mysql_conn,
+    qdrant_client=qdrant_client,
     bucket_path=os.path.join(project_root, "bucket"),
     print_to_debug_log=print_to_debug_log,
+    embedding_model=embedding_model
 )
 
 @app.route("/run", methods=["POST"])

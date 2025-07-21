@@ -1,6 +1,8 @@
 from typing import Any, Optional, Callable
 from dataclasses import asdict, dataclass
 
+from sentence_transformers import SentenceTransformer
+from qdrant_client import QdrantClient
 import mysql.connector
 
 # 2) Define your response dataclasses
@@ -80,5 +82,7 @@ class TaskContext:
 @dataclass
 class AppResources:
     mysql_conn: mysql.connector.MySQLConnection
+    qdrant_client: QdrantClient
+    embedding_model: SentenceTransformer
     bucket_path: str
     print_to_debug_log: Callable[[Any],None]
