@@ -364,6 +364,7 @@ export default function Upload() {
               >
                 <input
                   {...register("title")}
+                  disabled={isSubmitting || isSubmitted}
                   placeholder="Title"
                   style={{
                     padding: "0.5rem",
@@ -375,6 +376,7 @@ export default function Upload() {
 
                 <input
                   {...register("author")}
+                  disabled={isSubmitting || isSubmitted}
                   placeholder="Author"
                   style={{
                     padding: "0.5rem",
@@ -386,6 +388,7 @@ export default function Upload() {
 
                 <textarea
                   {...register("description")}
+                  disabled={isSubmitting || isSubmitted}
                   rows={5}
                   placeholder="Description (optional)"
                   style={{
