@@ -128,6 +128,20 @@ def setup_database(conn):
     """)
     print("Created table: documents")
 
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS `sentences` (
+            `object_id` CHAR(36) NOT NULL,
+            `sentence_index` INT NOT NULL,
+            `sentence_text` TEXT,
+            `vector_uuid` CHAR(36) NULL,
+            PRIMARY KEY (`object_id`, `sentence_index`),
+            FOREIGN KEY (`object_id`) REFERENCES `objects` (`id`)
+        ) ENGINE=InnoDB;
+        """
+    )
+    print("Created table: sentences")
+
     conn.commit()
     cursor.close()
 

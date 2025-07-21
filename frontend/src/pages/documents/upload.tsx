@@ -8,7 +8,7 @@ import { useLiveProgressViewer } from "@/components/live-progress-viewer/useLive
 import LoadingSpinnerOverlay from "@/components/LoadingSpinnerOverlay";
 import theme from "@/themes/light";
 import { FileStreamer } from "@/utils/FileStreamer";
-import { callRoute } from "@/utils/rpc";
+import { callRoute, callLiveRoute } from "@/utils/rpc";
 import { SerializableObject } from "@/utils/serialization";
 import {
   ProgressBarMessage,
@@ -237,6 +237,46 @@ export default function Upload() {
       addProgressMessage({
         kind: "string",
         text: "Preprocessing complete.",
+        color: "green",
+      });
+
+      addProgressMessage({ kind: "string", text: "Ingesting sentences..." });
+
+      const ingestBarId = addProgressMessage({
+        kind: "progressBar",
+        title: "Sentence Ingestion",
+        showAsPercent: true,
+        max: 1,
+        current: 0,
+        titleStyle: { color: "blue" },
+      });
+
+      const ingestResult = await callLiveRoute<
+        SerializableObject,
+        { num_embedded_sentences: number; num_blank_lines: number; total_line_count: number }
+      >(endpoint, "/documents/ingest-sentences", { document_id: documentId }, {
+        onProgress: (p) => {
+          updateMessageById(ingestBarId, (bar: ProgressMessage) => {
+            (bar as ProgressBarMessage).current = p.current;
+            (bar as ProgressBarMessage).max = p.total;
+            return bar;
+          });
+        },
+        onUpdate: (u) => {
+          addProgressMessage({ kind: "string", text: u.message });
+        },
+        onError: (e) => {
+          addProgressMessage({ kind: "string", text: e.message, color: "red" });
+        },
+        onFatalError: (e) => {
+          addProgressMessage({ kind: "string", text: e.message, color: "red" });
+        },
+      });
+
+      addProgressMessage({
+        kind: "string",
+        text:
+          `Ingested ${ingestResult.num_embedded_sentences} sentences with ${ingestResult.num_blank_lines} blank lines (total ${ingestResult.total_line_count}).`,
         color: "green",
       });
     } catch (err) {
