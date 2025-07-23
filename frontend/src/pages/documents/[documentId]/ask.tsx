@@ -1,7 +1,8 @@
 import Head from "next/head";
-import { useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MdMessage } from "react-icons/md";
-import { Button, Div, H1, P, Span } from "style-props-html";
+import { Button, Div, H1, H2, P, Span } from "style-props-html";
+import { useRouter } from "next/router";
 
 import LiveProgressViewer from "@/components/live-progress-viewer/LiveProgressViewer";
 import { useLiveProgressViewer } from "@/components/live-progress-viewer/useLiveProgressViewer";
@@ -13,6 +14,7 @@ import { css } from "@emotion/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { callRoute } from "@/utils/rpc";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 
@@ -52,10 +54,55 @@ const askFormSchema = z.object({
 });
 type AskFormSchema = z.infer<typeof askFormSchema>;
 
-export default function Upload() {
+type DocumentMetadata = {
+  title: string;
+  author: string;
+  description: string | null;
+};
+
+export default function Ask() {
   const endpoint = getEndpoint();
 
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const router = useRouter();
+
+  const { documentId } = router.query as { documentId?: string };
+
+  const [documentMetadata, setDocumentMetadata] =
+    useState<DocumentMetadata | null>(null);
+
+  const [documentMetadataError, setDocumentMetadataError] = useState<
+    string | null
+  >(null);
+
+
+   const fetchDocumentMetadata = useCallback(async function() {
+    if(!documentId) return;
+    try {
+      setDocumentMetadata(
+        await callRoute<
+          {
+            document_id: string;
+          },
+          DocumentMetadata
+        >(endpoint, "/documents/get-metadata", { document_id: documentId })
+      );
+    } catch (err) {
+      console.error(err);
+      if (err instanceof Error) {
+        setDocumentMetadataError(
+          `Failed to fetch document metadata: ${err.message}`
+        );
+      } else {
+        setDocumentMetadataError("Failed to fetch document metadata.");
+      }
+    }
+  },[documentId])
+
+  useEffect(() => {
+    fetchDocumentMetadata();
+  }, [documentId]);
 
   const {
     progressMessages,
@@ -144,128 +191,161 @@ export default function Upload() {
           >
             Ask a Question
           </H1>
-          <Div
-            borderRadius="0 0 1rem 1rem"
-            color={theme.colors.card.body.text}
-            width="75vw"
-            display="grid"
-            gridTemplateColumns="auto auto"
-          >
+          {documentMetadataError ? (
             <Div
-              display="flex"
-              flexDirection="column"
-              alignItems="center"
-              gap="0.5rem"
-              padding="1rem"
-              width={isSubmitted || isSubmitting ? "30vw" : "75vw"}
+              fontSize="1.5rem"
+              fontWeight="bold"
+              color="red"
+              background="white"
+              borderRadius="0.5rem"
+              padding="0.5rem"
+            >
+              {documentMetadataError}
+            </Div>
+          ) : (
+            <Div
+              borderRadius="0 0 1rem 1rem"
+              color={theme.colors.card.body.text}
+              width="75vw"
+              display="grid"
+              gridTemplateColumns="auto auto"
             >
               <Div
                 display="flex"
                 flexDirection="column"
-                gap="0.5rem"
-                width="100%"
-              >
-                <input
-                  {...register("question")}
-                  disabled={isSubmitting || isSubmitted}
-                  placeholder="Ask a question..."
-                  style={{
-                    padding: "0.5rem",
-                    border: "1px solid #ccc",
-                    borderRadius: "0.25rem",
-                  }}
-                />
-                {errors.question && (
-                  <P color="red">{errors.question.message}</P>
-                )}
-              </Div>
-
-              <Button
-                onClick={() => {
-                  handleSubmit(onSubmit)();
-                }}
-                disabled={!isValid || isSubmitting || isSubmitted}
-                display="flex"
                 alignItems="center"
                 gap="0.5rem"
-                padding="0.5rem 1rem"
-                borderRadius="0.5rem"
-                border="2px solid blue"
-                color="blue"
-                background="white"
-                boxShadow={`4px 4px 4px 0px ${theme.colors.card.body.shadow}`}
-                position="relative"
-                css={buttonInteractionCss}
+                padding="1rem"
+                width={isSubmitted || isSubmitting ? "30vw" : "75vw"}
               >
-                <MdMessage />
-                <Span>
-                  {isSubmitting
-                    ? "Answering…"
-                    : isSubmitSuccessful
-                    ? "Done answering."
-                    : isSubmitted && !isSubmitSuccessful
-                    ? "Failed to answer."
-                    : "Ask"}
-                </Span>
-                {isSubmitting && <LoadingSpinnerOverlay size="1rem" />}
-              </Button>
+                <Div
+                  display="flex"
+                  flexDirection="column"
+                  gap="0.5rem"
+                  width="100%"
+                >
+                  {documentMetadata && (
+                    <>
+                      <Div fontSize="2rem" fontWeight="bold">
+                        {documentMetadata.title}
+                      </Div>
+                      <Div
+                        fontSize="1.5rem"
+                        fontWeight="normal"
+                        fontStyle="italic"
+                      >
+                        {documentMetadata.author}
+                      </Div>
+                      {documentMetadata.description && (
+                        <P whiteSpace="pre-wrap">
+                          {documentMetadata.description}
+                        </P>
+                      )}
+                    </>
+                  )}
+                  <input
+                    {...register("question")}
+                    disabled={isSubmitting || isSubmitted}
+                    placeholder="Ask a question..."
+                    style={{
+                      padding: "0.5rem",
+                      border: "1px solid #ccc",
+                      borderRadius: "0.25rem",
+                    }}
+                  />
+                  {errors.question && (
+                    <P color="red">{errors.question.message}</P>
+                  )}
+                </Div>
 
-              {isSubmitted && !isSubmitSuccessful && (
                 <Button
-                  fontSize="1rem"
                   onClick={() => {
-                    // 1) reset submission state, keep the current field values:
-                    reset(undefined, {
-                      keepValues: true,
-                      keepErrors: true,
-                      keepDirty: true,
-                      keepTouched: true,
-                      keepIsValid: true,
-                      // submitCount will reset to 0 so isSubmitted → false
-                      keepSubmitCount: false,
-                    });
-
-                    // 2) immediately re‑invoke your submit handler
                     handleSubmit(onSubmit)();
                   }}
-                  border="none"
-                  color="red"
-                  background="transparent"
-                  css={buttonInteractionCss}
-                  textDecoration="underline"
-                >
-                  Try Again
-                </Button>
-              )}
-              {(isSubmitSuccessful || (isSubmitted && !isSubmitSuccessful)) && (
-                <Button
-                  fontSize="1rem"
-                  onClick={() => {
-                    reset(); // ← wipe back to defaultValues
-                    clearProgressMessages();
-                  }}
-                  border="none"
+                  disabled={!isValid || isSubmitting || isSubmitted}
+                  display="flex"
+                  alignItems="center"
+                  gap="0.5rem"
+                  padding="0.5rem 1rem"
+                  borderRadius="0.5rem"
+                  border="2px solid blue"
                   color="blue"
-                  background="transparent"
+                  background="white"
+                  boxShadow={`4px 4px 4px 0px ${theme.colors.card.body.shadow}`}
+                  position="relative"
                   css={buttonInteractionCss}
-                  textDecoration="underline"
                 >
-                  Ask Another Question
+                  <MdMessage />
+                  <Span>
+                    {isSubmitting
+                      ? "Answering…"
+                      : isSubmitSuccessful
+                      ? "Done answering."
+                      : isSubmitted && !isSubmitSuccessful
+                      ? "Failed to answer."
+                      : "Ask"}
+                  </Span>
+                  {isSubmitting && <LoadingSpinnerOverlay size="1rem" />}
                 </Button>
-              )}
+
+                {isSubmitted && !isSubmitSuccessful && (
+                  <Button
+                    fontSize="1rem"
+                    onClick={() => {
+                      // 1) reset submission state, keep the current field values:
+                      reset(undefined, {
+                        keepValues: true,
+                        keepErrors: true,
+                        keepDirty: true,
+                        keepTouched: true,
+                        keepIsValid: true,
+                        // submitCount will reset to 0 so isSubmitted → false
+                        keepSubmitCount: false,
+                      });
+
+                      // 2) immediately re‑invoke your submit handler
+                      handleSubmit(onSubmit)();
+                    }}
+                    border="none"
+                    color="red"
+                    background="transparent"
+                    css={buttonInteractionCss}
+                    textDecoration="underline"
+                  >
+                    Try Again
+                  </Button>
+                )}
+                {(isSubmitSuccessful ||
+                  (isSubmitted && !isSubmitSuccessful)) && (
+                  <Button
+                    fontSize="1rem"
+                    onClick={() => {
+                      reset(); // ← wipe back to defaultValues
+                      clearProgressMessages();
+                    }}
+                    border="none"
+                    color="blue"
+                    background="transparent"
+                    css={buttonInteractionCss}
+                    textDecoration="underline"
+                  >
+                    Ask Another Question
+                  </Button>
+                )}
+              </Div>
+              <Div
+                width={isSubmitted || isSubmitting ? "45vw" : "0"}
+                transition="width 0.3s ease-in-out"
+              >
+                <LiveProgressViewer
+                  width="100%"
+                  height="calc(75vh - 5rem)"
+                  ref={progressContainerRef}
+                  progressMessages={progressMessages}
+                />
+              </Div>
             </Div>
-            <Div
-              width={isSubmitted || isSubmitting ? "45vw" : "0"}
-              transition="width 0.3s ease-in-out"
-            >
-              <LiveProgressViewer
-                width="100%"
-                height="calc(75vh - 5rem)"
-                ref={progressContainerRef}
-                progressMessages={progressMessages}
-              />
-            </Div>
-          </Div>
+          )}
         </Div>
       </Div>
     </>

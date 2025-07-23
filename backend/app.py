@@ -30,6 +30,7 @@ from backend.short_tasks.files.upload.new_object import task_new_object
 from backend.short_tasks.files.upload.write_object_bytes import task_write_object_bytes
 from backend.short_tasks.documents.create import task_create as task_create_document
 from backend.short_tasks.documents.preprocess import task_preprocess
+from backend.short_tasks.documents.get_metadata import task_get_metadata
 
 from backend.long_tasks.documents.ingest_sentences import task_ingest_sentences
 
@@ -171,6 +172,7 @@ register_short_task("/files/upload/new-object", task_new_object)
 register_short_task("/files/upload/write-object-bytes", task_write_object_bytes)
 register_short_task("/documents/create", task_create_document)
 register_short_task("/documents/preprocess", task_preprocess)
+register_short_task("/documents/get-metadata", task_get_metadata)
 
 
 register_long_task("/documents/ingest-sentences", task_ingest_sentences)
