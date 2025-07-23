@@ -20,10 +20,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { css } from "@emotion/react";
+import getEndpoint from "@/utils/getEndpoint";
 
-// Just development for now,
-// In the future, may need a tunnel
-const endpoint = "http://localhost:5000";
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 
@@ -76,6 +74,9 @@ const uplaodFormSchema = z.object({
 type UploadFormData = z.infer<typeof uplaodFormSchema>;
 
 export default function Upload() {
+
+  const endpoint = getEndpoint();
+
   const inputRef = useRef<HTMLInputElement>(null);
 
   const {

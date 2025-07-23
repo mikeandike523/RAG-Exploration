@@ -319,5 +319,5 @@ print_to_debug_log("Done.")
 if __name__ == "__main__":
 
     print_to_debug_log("Running main procedure...")
-    socketio.run(app, host="localhost", port=env_vars.get("PORT", 5000), debug=True)
+    socketio.run(app, host="localhost", port=env_vars.get("PORT", 5050), debug=True)
     print("Done running main procedure.")

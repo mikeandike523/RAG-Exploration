@@ -208,9 +208,9 @@ export async function callLiveRoute<
 
       const url = new URL(endpoint);
 
-      const socketBase = url.origin; // e.g. "http://localhost:5000"
+      const socketBase = url.origin; // e.g. "http://localhost:5050"
 
-      // now point socket.io at port 5000
+      // now point socket.io at port 5050
       const socket: Socket = io(socketBase, {
         path: "/socket.io", // only if your server uses the default path
         // transports: ["websocket"],               // optional: force WebSocket

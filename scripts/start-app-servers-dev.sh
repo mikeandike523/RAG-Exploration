@@ -11,7 +11,7 @@ SESSION="command_${script}_tmux_session"
 # your three long‑running commands
 COMMAND_1="cd frontend && pnpm run dev"
 COMMAND_2="./__inenv python backend/app.py"
-COMMAND_3="multitail -cT ansi backend/logs/debug.txt"
+COMMAND_3="tail -F -n0 backend/logs/debug.txt"
 
 # clean logs
 rm -f backend/logs/debug.txt

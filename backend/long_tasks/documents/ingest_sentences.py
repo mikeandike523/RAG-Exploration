@@ -107,7 +107,6 @@ def task_ingest_sentences(
         vectors_config=VectorParams(size=len(embeddings[0]), distance=Distance.COSINE),
     )
 
-    ctx.emit_update("Ingesting sentences")
     ctx.emit_progress(0, total_line_count)
 
     embed_iter = iter(embeddings)
