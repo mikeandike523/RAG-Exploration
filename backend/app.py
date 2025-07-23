@@ -33,6 +33,7 @@ from backend.short_tasks.documents.preprocess import task_preprocess
 from backend.short_tasks.documents.get_metadata import task_get_metadata
 
 from backend.long_tasks.documents.ingest_sentences import task_ingest_sentences
+from backend.long_tasks.documents.ask import task_ask
 
 project_root = get_project_root()
 
@@ -176,6 +177,7 @@ register_short_task("/documents/get-metadata", task_get_metadata)
 
 
 register_long_task("/documents/ingest-sentences", task_ingest_sentences)
+register_long_task("/documents/ask", task_ask)
 
 
 app_resources = AppResources(
