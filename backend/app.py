@@ -315,7 +315,7 @@ def on_join(data):
     if not task_id:
         emit("error", asdict(ErrorResponse(message="No task_id provided")))
         return
-
+    print_to_debug_log(colored(f"on_join -- Joining room '{task_id}'", "blue"))
     join_room(task_id)
 
 print_to_debug_log("Done.")

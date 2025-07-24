@@ -114,15 +114,17 @@ export default function AskPage({
 
   async function onSubmit(data: AskFormSchema) {
     const question = data.question;
-
+    addProgressMessage({ kind: "string", text: "Asking AI..." });
     try {
       const answer = await callLiveRoute<
         { document_id: string; question: string },
         { answer: string }
       >(endpoint, "/documents/ask", { document_id: documentId, question },{
         onUpdate: ({message}) => {
+          console.log(message);
           addProgressMessage({ kind: "string", text: message });
-        }
+        },
+        
       });
 
       addProgressMessage({

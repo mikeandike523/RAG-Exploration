@@ -213,7 +213,7 @@ export async function callLiveRoute<
       // now point socket.io at port 5050
       const socket: Socket = io(socketBase, {
         path: "/socket.io", // only if your server uses the default path
-        // transports: ["websocket"],               // optional: force WebSocket
+        transports: ["websocket"],               // optional: force WebSocket
       });
 
       socket.on("connect", () => {
@@ -230,6 +230,7 @@ export async function callLiveRoute<
         }
       );
       socket.on("update", (data: UpdateResponse<SerializableObject | void>) => {
+        console.log("update", data);
         handlers.onUpdate?.(data);
       });
       socket.on("error", (data: ErrorResponse<SerializableObject | void>) => {
@@ -250,6 +251,7 @@ export async function callLiveRoute<
           resolve(data.result as TRet);
         }
       );
+      console.log(socket)
     });
   } catch (e) {
     if (e instanceof RPCerror) {
