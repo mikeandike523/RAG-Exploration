@@ -5,6 +5,7 @@ eventlet.monkey_patch()
 
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit, join_room
+import redis
 from dataclasses import asdict
 from typing import Any, Callable, Dict
 import uuid
@@ -58,6 +59,8 @@ redis_env_vars = dotenv_values(
     os.path.join(os.path.dirname(__file__), "..", "servers", "redis", ".env")
 )
 redis_url = f"redis://{redis_env_vars['REDIS_HOST']}:{redis_env_vars['REDIS_PORT']}/{redis_env_vars['REDIS_DB']}"
+redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
+PENDING_TASK_PREFIX = "pending_task:"
 
 mysql_env_vars = dotenv_values(
     os.path.join(os.path.dirname(__file__), "..", "servers", "mysql", ".env")
@@ -276,9 +279,14 @@ def begin_task():
     task_id = f"{task_name}:{uuid.uuid4()}"
 
     try:
-        socketio.start_background_task(_run_long_task, task_name, task_id, args)
+        task_key = f"{PENDING_TASK_PREFIX}{task_id}"
+        redis_client.hset(task_key, mapping={
+            "task_name": task_name,
+            "args": json.dumps(args) if args is not None else "null",
+        })
+        redis_client.expire(task_key, 3600)
     except Exception as exc:
-        print_to_debug_log(colored(f"/begin -- Failed to start background task '{task_name}': {str(exc)}", "red"))
+        print_to_debug_log(colored(f"/begin -- Failed to store pending task '{task_name}': {str(exc)}", "red"))
         print_to_debug_log(colored("Traceback:", "red"))
         print_to_debug_log(traceback.format_exc())
         return jsonify({"error": "An unknown server error occurred. Please try again later."}), 500
@@ -317,6 +325,17 @@ def on_join(data):
         return
     print_to_debug_log(colored(f"on_join -- Joining room '{task_id}'", "blue"))
     join_room(task_id)
+    task_key = f"{PENDING_TASK_PREFIX}{task_id}"
+    task_info = redis_client.hgetall(task_key)
+    if task_info:
+        task_name = task_info.get("task_name")
+        args_json = task_info.get("args")
+        args = json.loads(args_json) if args_json and args_json != "null" else None
+        redis_client.delete(task_key)
+        socketio.start_background_task(_run_long_task, task_name, task_id, args)
+        emit("joined", asdict(UpdateResponse(message="task_started")))
+    else:
+        emit("joined", asdict(UpdateResponse(message="joined")))
 
 print_to_debug_log("Done.")
 
