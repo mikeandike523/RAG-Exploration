@@ -26,7 +26,7 @@ export interface ProgressBarMessage {
   showAsPercent: boolean;
   max: number;
   current: number;
-  titleStyle: TitleStyle;
+  titleStyle?: TitleStyle;
 }
 
 export type ProgressMessage = TextMessage | ProgressBarMessage;

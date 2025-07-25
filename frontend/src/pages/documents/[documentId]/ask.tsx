@@ -82,17 +82,16 @@ export default function AskPage({
   documentId,
   documentMetadata,
 }: InferGetServerSidePropsType<typeof getServerSideProps>) {
-
   const endpoint = getEndpoint();
 
-  const [answer, setAnswer] = useState<string|null>(null);
+  const [answer, setAnswer] = useState<string | null>(null);
 
   const {
     progressMessages,
     containerRef: progressContainerRef,
     addProgressMessage,
-    updateMessageById,
     clearProgressMessages,
+    upsertProgressBarByTitle,
   } = useLiveProgressViewer();
 
   const {
@@ -119,21 +118,31 @@ export default function AskPage({
       const answer = await callLiveRoute<
         { document_id: string; question: string },
         { answer: string }
-      >(endpoint, "/documents/ask", { document_id: documentId, question },{
-        onUpdate: ({message}) => {
-          console.log(message);
-          addProgressMessage({ kind: "string", text: message });
-        },
-        
-      });
+      >(
+        endpoint,
+        "/documents/ask",
+        { document_id: documentId, question },
+        {
+          onUpdate: ({ message }) => {
+            console.log(message);
+            addProgressMessage({ kind: "string", text: message });
+          },
+          onProgress: ({ current, total, name }) => {
+            if (name) {
+              upsertProgressBarByTitle(name, current, total, {
+                showAsPercent: true,
+                titleStyle: { color: "blue" }
+              });
+            }
+          },
+        }
+      );
 
       addProgressMessage({
         kind: "string",
-        text: "AI successfully answered your question. See the answer to the left.",
+        text: "Done thinking.",
         color: "green",
       });
-
-      
     } catch (err) {
       console.error(err);
       addProgressMessage({
@@ -323,9 +332,7 @@ export default function AskPage({
               gridTemplateRows="1fr 1fr"
               height="calc(75vh - 5rem)"
             >
-              <Div>
-   
-              </Div>
+              <Div></Div>
               <LiveProgressViewer
                 width="100%"
                 ref={progressContainerRef}

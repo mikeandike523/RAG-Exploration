@@ -45,18 +45,18 @@ const ProgressBar: React.FC<{ message: ProgressBarMessage }> = ({
     >
       <Div
         width="100%"
-        background={message.titleStyle.backgroundColor}
-        color={message.titleStyle.color}
-        fontWeight={message.titleStyle.fontWeight}
-        fontStyle={message.titleStyle.fontStyle}
-        fontSize={message.titleStyle.fontSize}
+        background={message.titleStyle?.backgroundColor}
+        color={message.titleStyle?.color}
+        fontWeight={message.titleStyle?.fontWeight}
+        fontStyle={message.titleStyle?.fontStyle}
+        fontSize={message.titleStyle?.fontSize}
       >
         {message.title} — {percentText}
       </Div>
       <Div width="100%" background="#e0e0e0" borderRadius="0.25rem" height="1rem">
         <Div
           width={widthPercent}
-          background={message.titleStyle.color}
+          background={message.titleStyle?.color}
           height="100%"
           borderRadius="0.25rem"
         />
