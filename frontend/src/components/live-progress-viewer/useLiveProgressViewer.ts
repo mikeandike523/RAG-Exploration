@@ -72,13 +72,11 @@ export function useLiveProgressViewer() {
     defaultOptions: Omit<ProgressBarMessage,"title"|"current"|"max"|"kind">
   ): string => {
     let targetId: string | null = null;
-    let targetMessage: ProgressBarMessage | null = null;
     
     // Find existing progress bar with matching title
     for (const [id, message] of progressMessages.entries()) {
       if (message.kind === 'progressBar' && message.title === title) {
         targetId = id;
-        targetMessage = message as ProgressBarMessage;
         break;
       }
     }

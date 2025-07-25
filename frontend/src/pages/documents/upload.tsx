@@ -1,26 +1,26 @@
 import { blobToBase64 } from "@maruware/blob-to-base64";
 import Head from "next/head";
-import { DragEvent, useRef, useState } from "react";
+import { DragEvent, useRef } from "react";
 import { MdCloudUpload } from "react-icons/md";
 import { Button, Div, H1, P, Span } from "style-props-html";
 
-import { useLiveProgressViewer } from "@/components/live-progress-viewer/useLiveProgressViewer";
-import LoadingSpinnerOverlay from "@/components/LoadingSpinnerOverlay";
-import theme from "@/themes/light";
-import { FileStreamer } from "@/utils/FileStreamer";
-import { callRoute, callLiveRoute } from "@/utils/rpc";
-import { SerializableObject } from "@/utils/serialization";
+import LiveProgressViewer from "@/components/live-progress-viewer/LiveProgressViewer";
 import {
   ProgressBarMessage,
   ProgressMessage,
 } from "@/components/live-progress-viewer/types";
-import LiveProgressViewer from "@/components/live-progress-viewer/LiveProgressViewer";
+import { useLiveProgressViewer } from "@/components/live-progress-viewer/useLiveProgressViewer";
+import LoadingSpinnerOverlay from "@/components/LoadingSpinnerOverlay";
+import theme from "@/themes/light";
+import { FileStreamer } from "@/utils/FileStreamer";
+import { callLiveRoute, callRoute } from "@/utils/rpc";
+import { SerializableObject } from "@/utils/serialization";
 
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { css } from "@emotion/react";
 import getEndpoint from "@/utils/getEndpoint";
+import { css } from "@emotion/react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB

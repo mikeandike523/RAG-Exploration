@@ -15,7 +15,6 @@ import LoadingSpinnerOverlay from "@/components/LoadingSpinnerOverlay";
 
 import getEndpoint from "@/utils/getEndpoint";
 import { callLiveRoute, callRoute } from "@/utils/rpc";
-import { useState } from "react";
 
 type DocumentMetadata = {
   title: string;
@@ -84,7 +83,7 @@ export default function AskPage({
 }: InferGetServerSidePropsType<typeof getServerSideProps>) {
   const endpoint = getEndpoint();
 
-  const [answer, setAnswer] = useState<string | null>(null);
+  //const [answer, setAnswer] = useState<string | null>(null);
 
   const {
     progressMessages,
@@ -115,7 +114,7 @@ export default function AskPage({
     const question = data.question;
     addProgressMessage({ kind: "string", text: "Asking AI..." });
     try {
-      const answer = await callLiveRoute<
+      await callLiveRoute<
         { document_id: string; question: string },
         { answer: string }
       >(

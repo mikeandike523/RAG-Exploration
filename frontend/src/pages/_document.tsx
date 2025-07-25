@@ -1,14 +1,16 @@
+import createEmotionCache from '@/createEmotionCache';
+import { EmotionCache } from '@emotion/cache';
+import createEmotionServer from '@emotion/server/create-instance';
+import { AppType } from 'next/app';
 import Document, {
-  Html,
-  Head,
-  Main,
-  NextScript,
   DocumentContext,
   DocumentInitialProps,
+  Head,
+  Html,
+  Main,
+  NextScript,
 } from 'next/document';
-import createEmotionServer from '@emotion/server/create-instance';
-import createEmotionCache from '@/createEmotionCache';
-import React from 'react';
+import { FC } from 'react';
 
 export default class MyDocument extends Document {
   static async getInitialProps(ctx: DocumentContext): Promise<DocumentInitialProps> {
@@ -19,9 +21,14 @@ export default class MyDocument extends Document {
 
     ctx.renderPage = () =>
       originalRenderPage({
-        enhanceApp: (App: any) =>
+        enhanceApp: (App: 
+
+          AppType
+
+        ) =>
           function EnhanceApp(props) {
-            return <App emotionCache={cache} {...props} />;
+            const AsEmotionCacheReady = App as FC<typeof props & {emotionCache: EmotionCache}>
+            return <AsEmotionCacheReady emotionCache={cache} {...props} />;
           },
       });
 
@@ -37,7 +44,6 @@ export default class MyDocument extends Document {
       <style
         key={style.key}
         data-emotion={`${style.key} ${style.ids.join(' ')}`}
-        // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: style.css }}
       />
     ));
