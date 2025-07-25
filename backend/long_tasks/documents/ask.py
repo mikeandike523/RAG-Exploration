@@ -348,9 +348,14 @@ def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
 
 
     system_prompt = f"""
-Your goal is to answer the user's question about "{document_title}" by {document_author}, given the provided evidence snippets.
+Your goal is to answer the user's question about "{document_title}" by {document_author},
+given the provided evidence snippets.
 
-Focus on analyzing the evidence, and write a cohesive and informative answer. Incorporate citations of the evidence (by number) into your response.
+Focus on analyzing the evidence, and write a cohesive and informative answer.
+Incorporate citations of the evidence (by number) into your response.
+
+Note, you are not forced to use all of the evidence snippets. If evidence is not relevant, omit it.
+
 """.strip()
     
     user_prompt = f"""
