@@ -19,6 +19,9 @@ MAX_PARAGRAPH_SIZE=25 # Hard maximum of 25
 FLOOD_PROB_COMP_SIZE_POWER=1/4
 FLOOD_PROB_COMP_SIMILARITY_POWER=1/4
 
+BLANK_LINE_SIMILARITY = 0.0 # Affects how aggressively the flooding chooses to stop at a blank line
+# ranges from -1.0 to 1.0, when set to 0.0, a blank line is neither similar nor different to a given sentence
+
 ESSAY_TEMPERATURE=0.7
 ESSAY_TOP_P=0.9
 ESSY_MAX_TOKENS=2048
@@ -83,7 +86,7 @@ class IngestSentencesParams(BaseModel):
 def _cosine_similarity(v1, v2) -> float:
     """Compute cosine similarity between two vectors represented as lists."""
     if v1 is None or v2 is None:
-        return 0.0
+        return BLANK_LINE_SIMILARITY
     dot = sum(a * b for a, b in zip(v1, v2))
     norm1 = math.sqrt(sum(a * a for a in v1))
     norm2 = math.sqrt(sum(b * b for b in v2))
