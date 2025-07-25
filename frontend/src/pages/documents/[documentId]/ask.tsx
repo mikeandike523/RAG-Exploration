@@ -15,6 +15,7 @@ import LoadingSpinnerOverlay from "@/components/LoadingSpinnerOverlay";
 
 import getEndpoint from "@/utils/getEndpoint";
 import { callLiveRoute, callRoute } from "@/utils/rpc";
+import { useState } from "react";
 
 type DocumentMetadata = {
   title: string;
@@ -83,7 +84,7 @@ export default function AskPage({
 }: InferGetServerSidePropsType<typeof getServerSideProps>) {
   const endpoint = getEndpoint();
 
-  // const [answer, setAnswer] = useState<string | null>(null);
+  const [answer, setAnswer] = useState<string | null>(null);
 
   const {
     progressMessages,
@@ -111,12 +112,13 @@ export default function AskPage({
   });
 
   async function onSubmit(data: AskFormSchema) {
+    setAnswer(null);
     const question = data.question;
     addProgressMessage({ kind: "string", text: "Asking AI..." });
     try {
-      await callLiveRoute<
+      const answerResponse = await callLiveRoute<
         { document_id: string; question: string },
-        { answer: string }
+        string
       >(
         endpoint,
         "/documents/ask",
@@ -175,6 +177,8 @@ export default function AskPage({
         text: "Done thinking.",
         color: "green",
       });
+
+      setAnswer(answerResponse);
     } catch (err) {
       console.error(err);
       addProgressMessage({
@@ -363,13 +367,32 @@ export default function AskPage({
               display="grid"
               gridTemplateRows="auto 1fr"
               height="calc(75vh - 5rem)"
+              padding="0.5rem"
+              rowGap="0.5rem"
             >
-              <Div></Div>
-              <LiveProgressViewer
+              <Div
+                whiteSpace="pre-wrap"
+                maxHeight="calc( 0.5 * (75vh - 5rem))"
+                overflow="hidden"
+                transition="height 0.3s ease-in-out"
                 width="100%"
-                ref={progressContainerRef}
-                progressMessages={progressMessages}
-              />
+                height="100%"
+                overflowY="auto"
+                background="lightgrey"
+                padding="0.5rem"
+                borderRadius="0.5rem"
+              >
+                {answer}
+              </Div>
+                <LiveProgressViewer
+                  overflow="hidden"
+                  width="100%"
+                  background="lightgrey"
+                  height="100%"
+                  ref={progressContainerRef}
+                  progressMessages={progressMessages}
+                  borderRadius="0.5rem"
+                />
             </Div>
           </Div>
         </Div>

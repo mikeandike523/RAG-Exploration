@@ -27,7 +27,7 @@ from sentence_transformers import SentenceTransformer
 
 from src.utils.project_structure import get_project_root
 
-from backend.helpers.paragraph_to_query_relevance import paragraph_to_query_relevance
+
 
 from backend.short_tasks.files.upload.new_object import task_new_object
 from backend.short_tasks.files.upload.write_object_bytes import task_write_object_bytes
@@ -102,9 +102,15 @@ print_to_debug_log("Loading SentenceTransformer (all-MiniLM-L6-v2)...")
 # Use GPU0 specifically, not any other GPU
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2", device="cuda:0")
 
-print("Done.")
+print_to_debug_log("Done.")
 
-print("Structuring app and defining routes...")
+print_to_debug_log("Loading paragraph_to_query_relevance functionality (including loading cross-encoder)...")
+
+from backend.helpers.paragraph_to_query_relevance import paragraph_to_query_relevance
+
+print_to_debug_log("Done.")
+
+print_to_debug_log("Structuring app and defining routes...")
 
 app = Flask(__name__)
 
@@ -186,6 +192,7 @@ register_short_task("/documents/get-metadata", task_get_metadata)
 
 register_long_task("/documents/ingest-sentences", task_ingest_sentences)
 register_long_task("/documents/ask", task_ask)
+
 
 
 app_resources = AppResources(

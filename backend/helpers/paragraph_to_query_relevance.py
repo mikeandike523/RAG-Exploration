@@ -7,6 +7,8 @@ EPS = 1e-6  # small epsilon to avoid zero in multiplication
 
 # === INITIALIZE REUSABLE RESOURCES ===
 # Cross-encoder for fine-grained scoring
+
+
 CROSS_ENCODER = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device="cuda:0")
 
 

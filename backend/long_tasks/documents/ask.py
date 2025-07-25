@@ -1,9 +1,11 @@
 from typing import Dict, List
-from time import sleep
+import traceback
 import math
 import random
 
+import requests
 from pydantic import BaseModel, StrictStr, ValidationError, validator
+from termcolor import colored
 
 from backend.api_types import FatalTaskError, AppResources, TaskContext
 
@@ -16,6 +18,13 @@ MAX_PARAGRAPH_SIZE=25 # Hard maximum of 25
 
 FLOOD_PROB_COMP_SIZE_POWER=1/4
 FLOOD_PROB_COMP_SIMILARITY_POWER=1/4
+
+ESSAY_TEMPERATURE=0.7
+ESSAY_TOP_P=0.9
+ESSY_MAX_TOKENS=2048
+
+VLLM_ENDPOINT="http://localhost:8008/v1/chat/completions"
+
 # Flood procedure:
 
 # Suppose we have sentence at index i in a document, called S_i
@@ -229,9 +238,8 @@ def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
         if document is None:
             raise FatalTaskError("Document not found", {"status": 404, "document_id": document_id})
             
-        title = document.get("title", "")
-        author = document.get("author", "")
-        description = document.get("description", None)
+        document_title = document.get("title", "")
+        document_author = document.get("author", "")
         processed_object_id = document.get("processed_object_id", None)
         
     except Exception as e:
@@ -309,7 +317,7 @@ def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
 
     
     ctx.emit_update(
-        "Evaluating Paragraph Relevance..."
+        "Filtering relevant evidence..."
     )
 
     paragraph_to_query_relevance = app_resources.paragraph_to_query_relevance
@@ -331,7 +339,58 @@ def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
             "content": paragraph
         })
 
-        
+    ctx.emit_update(
+        "Writing essay..."
+    )
 
 
-    return ""
+    system_prompt = f"""
+Your goal is to answer the user's question about "{document_title}" by {document_author}, given the provided evidence snippets.
+
+Focus on analyzing the evidence, and write a cohesive and informative answer. Incorporate citations of the evidence (by number) into your response.
+""".strip()
+    
+    user_prompt = f"""
+
+[User's Question]: {params.question}
+
+[Evidence Snippets]:
+
+{"\n\n".join(
+    [f"Evidence #{i+1}:\n\n{paragraph}" for i, paragraph in enumerate(top_paragraphs)]
+)}
+
+""".strip()
+
+    messages=[
+        {
+            "role": "system",
+            "content": system_prompt
+        },
+        {
+            "role": "user",
+            "content": user_prompt
+        }
+    ]
+
+
+    try:
+        response = requests.post(VLLM_ENDPOINT, json={
+            "max_tokens": ESSY_MAX_TOKENS,
+            "temperature": ESSAY_TEMPERATURE,
+            "top_p": ESSAY_TOP_P,
+            "messages": messages,
+        })
+
+        response.raise_for_status()
+
+        completion = response.json()["choices"][0]["message"]["content"]
+
+        return completion
+
+
+    except requests.exceptions.HTTPError as err:
+        print_to_debug_log(colored(f"HTTP error occurred while calling LLM: {err}\n\nTraceback:\n\n{traceback.format_exc()}", "red"))
+        raise FatalTaskError(f"HTTP error occurred while calling LLM: {err}", {"status": 500})
+    
+
