@@ -230,7 +230,6 @@ export async function callLiveRoute<
         }
       );
       socket.on("update", (data: UpdateResponse<SerializableObject | void>) => {
-        console.log("update", data);
         handlers.onUpdate?.(data);
       });
       socket.on("error", (data: ErrorResponse<SerializableObject | void>) => {
@@ -251,7 +250,6 @@ export async function callLiveRoute<
           resolve(data.result as TRet);
         }
       );
-      console.log(socket)
     });
   } catch (e) {
     if (e instanceof RPCerror) {

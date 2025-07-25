@@ -83,7 +83,7 @@ export default function AskPage({
 }: InferGetServerSidePropsType<typeof getServerSideProps>) {
   const endpoint = getEndpoint();
 
-  //const [answer, setAnswer] = useState<string | null>(null);
+  // const [answer, setAnswer] = useState<string | null>(null);
 
   const {
     progressMessages,
@@ -123,7 +123,6 @@ export default function AskPage({
         { document_id: documentId, question },
         {
           onUpdate: ({ message }) => {
-            console.log(message);
             addProgressMessage({ kind: "string", text: message });
           },
           onProgress: ({ current, total, name }) => {
@@ -328,7 +327,7 @@ export default function AskPage({
               width={isSubmitted || isSubmitting ? "45vw" : "0"}
               transition="width 0.3s ease-in-out"
               display="grid"
-              gridTemplateRows="1fr 1fr"
+              gridTemplateRows="auto 1fr"
               height="calc(75vh - 5rem)"
             >
               <Div></Div>

@@ -88,7 +88,6 @@ def task_ingest_sentences(
     num_embedded_sentences = len(embed_sentences)
     total_line_count = len(sentences)
 
-    ctx.emit_update("Embedding sentences")
     embeddings = model.encode(embed_sentences, show_progress_bar=False)
 
     # Reset any existing data for this object

@@ -7,6 +7,51 @@ from backend.api_types import FatalTaskError, AppResources, TaskContext
 
 TOP_K=20
 
+TARGET_PARAGRAPH_SIZE=15 # On average 15-sentence chunks
+MAX_PARAGRAPH_SIZE=25 # Hard maximum of 25
+
+# Flood procedure:
+
+# Suppose we have sentence at index i in a document, called S_i
+
+# To expand the paragraphs, we flood "up" (less than i) and "down" (greater than i)
+# to "collect" sentences to reach our target paragraph size.
+
+# First, we will not expand evenly, we alternate between flood-up and flood-down until we reach a stop condition at either
+
+# Rule #1
+
+# If we hit the hard max, then we stop (prob_continue = 0.0)
+
+# The probability of continuing is the multiplication of several components:
+
+# 1. proximity to target paragraph size
+# prob_continue_comp_1 = 1-(num_sentences/TARGET_PARAGRAPH_SIZE)**(some_power) (lets start with 1 or 2)
+
+
+# 2. Be aware, in the database, there are two types of sentences:
+    # - a blank sentece, that does not have a corresponding vector
+    # - a non-blank sentence, which has a corresponding vector
+    # So, if we encounter a blank sentence, we record the cosine similarity as 0, as in neither similar nor dissimilar
+    # (cosine similarity is between current "flood wavefront" and the potential next sentence to flood to)
+# prob_continue_comp_2 = ((1+cosine_similarity)/2) ** (power) (lets start with 1 or 2)
+
+# Some notes:
+
+# 1. We can optimize our algorithm by using mysql pagination to pre-fetch MAX_PARAGRAPH_SIZE sentences both
+# above and below the seed sentence (i.e. worst case scenario) (leading to MAX_PARAGRAPH_SIZE * 2) sentences to start off)
+
+# If a given "wavefront" (up or down) reaches a stop condition, we keep propogating  the other until it also stops,
+# i.e. propogation stops once both wavefronts stop.
+
+# if the initial +- MAX_PARAGRAPH_SIZE search chunk is near the start or end of the document, we may not
+# even be able to retrieve that many, so if our "propogation" hits the edge of our initial_search_chunk, we just stop propogation
+# most of the time this will not occur as most relevant sentences are near the middle of the document,
+# but it can happen and is an important edge case
+
+# Question, does mysql pagination support a negative offset?, and does it handle borders gracefully for partial result sets?
+
+
 class IngestSentencesParams(BaseModel):
     """Parameters for the ingest sentences task."""
 
@@ -19,6 +64,15 @@ class IngestSentencesParams(BaseModel):
             raise ValueError("document_id cannot be empty")
         return v.strip()
 
+def search_result_to_text_block(result, app_resources: AppResources) -> str:
+    print_to_debug_log = app_resources.print_to_debug_log
+
+    sentence_metadata = result.payload
+    sentence_vector = result.vector
+
+
+    object_id = sentence_metadata["object_id"]
+    sentence_index = sentence_metadata["sentence_index"]
 
 
 def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
@@ -48,7 +102,7 @@ def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
         cursor = mysql_conn.cursor(dictionary=True)
 
         cursor.execute(
-            "SELECT title, author, description FROM documents WHERE id = %s",
+            "SELECT title, author, description, processed_object_id FROM documents WHERE id = %s",
             (document_id,)
         )
         document = cursor.fetchone()
@@ -105,7 +159,7 @@ def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
             query_vector=question_vector,
             limit=TOP_K,
             with_payload=True,
-            with_vectors=False  # We only need metadata, not the vectors themselves
+            with_vectors=True
         )
     except Exception as e:
         raise FatalTaskError("Vector search error", {"status": 500, "error": str(e)})
@@ -119,11 +173,20 @@ def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
 
     # Step 5 (temporary):
 
-    for search_result in search_results:
+    found_text_blocks = []
+
+    for i,search_result in enumerate(search_results):
         print_to_debug_log(f"Found document with id '{search_result.id}' and score '{search_result.score}'")
 
-        # simulate delay to see progress bar works correctly
-        sleep(0.1)
+        found_text_blocks.append(
+            search_result_to_text_block(search_result, app_resources)
+        )
+
+        ctx.emit_progress(
+            i+1,
+            TOP_K,
+            "Forming Text Blocks"
+        )
 
     
 

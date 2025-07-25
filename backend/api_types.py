@@ -67,7 +67,7 @@ class TaskContext:
         self.socketio.emit('fatal_error', asdict(payload), room=self.room)
 
     def emit_progress(self, current: int, total: int, name: Optional[str] = None):
-        payload = ProgressResponse(current=current, total=total)
+        payload = ProgressResponse(current=current, total=total, name=name)
         self.socketio.emit('progress', asdict(payload), room=self.room)
 
     def emit_update(self, message: str, extra: Optional[Any] = None):
