@@ -1,5 +1,7 @@
 from typing import Dict, List
 from time import sleep
+import math
+import random
 
 from pydantic import BaseModel, StrictStr, ValidationError, validator
 
@@ -67,15 +69,128 @@ class IngestSentencesParams(BaseModel):
             raise ValueError("document_id cannot be empty")
         return v.strip()
 
+
+def _cosine_similarity(v1, v2) -> float:
+    """Compute cosine similarity between two vectors represented as lists."""
+    if v1 is None or v2 is None:
+        return 0.0
+    dot = sum(a * b for a, b in zip(v1, v2))
+    norm1 = math.sqrt(sum(a * a for a in v1))
+    norm2 = math.sqrt(sum(b * b for b in v2))
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+    return dot / (norm1 * norm2)
+
 def search_result_to_text_block(result, app_resources: AppResources) -> str:
     print_to_debug_log = app_resources.print_to_debug_log
 
     sentence_metadata = result.payload
     sentence_vector = result.vector
 
+    mysql_conn = app_resources.mysql_conn
+    qdrant_client = app_resources.qdrant_client
 
     object_id = sentence_metadata["object_id"]
     sentence_index = sentence_metadata["sentence_index"]
+
+    start_idx = max(0, sentence_index - MAX_PARAGRAPH_SIZE)
+    end_idx = sentence_index + MAX_PARAGRAPH_SIZE
+
+    cursor = mysql_conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "SELECT sentence_index, sentence_text, vector_uuid FROM sentences "
+            "WHERE object_id=%s AND sentence_index >= %s AND sentence_index <= %s "
+            "ORDER BY sentence_index ASC",
+            (object_id, start_idx, end_idx),
+        )
+        rows = cursor.fetchall()
+    finally:
+        cursor.close()
+
+    idx_to_row = {row["sentence_index"]: row for row in rows}
+
+    up_idx = sentence_index - 1
+    down_idx = sentence_index + 1
+    included_indices = [sentence_index]
+    up_vector = sentence_vector
+    down_vector = sentence_vector
+    up_stopped = False
+    down_stopped = False
+
+    def get_vector(vec_uuid):
+        if not vec_uuid:
+            return None
+        try:
+            point = qdrant_client.retrieve(
+                collection_name=object_id,
+                ids=[vec_uuid],
+                with_vectors=True,
+            )
+            return point[0].vector if point else None
+        except Exception as exc:  # pragma: no cover - retrieval failures
+            print_to_debug_log(f"Vector retrieval failed: {exc}")
+            return None
+
+    while (
+        len(included_indices) < MAX_PARAGRAPH_SIZE
+        and not (up_stopped and down_stopped)
+    ):
+        for direction in ("up", "down"):
+            if direction == "up":
+                if up_stopped:
+                    continue
+                idx = up_idx
+                up_idx -= 1
+                ref_vec = up_vector
+            else:
+                if down_stopped:
+                    continue
+                idx = down_idx
+                down_idx += 1
+                ref_vec = down_vector
+
+            row = idx_to_row.get(idx)
+            if row is None:
+                if direction == "up":
+                    up_stopped = True
+                else:
+                    down_stopped = True
+                continue
+
+            candidate_vec = get_vector(row.get("vector_uuid"))
+            sim = _cosine_similarity(ref_vec, candidate_vec)
+
+            comp1 = 1.0 - (len(included_indices) / TARGET_PARAGRAPH_SIZE)
+            if comp1 < 0:
+                comp1 = 0.0
+            comp1 = comp1 ** FLOOD_PROB_COMP_SIZE_POWER
+            comp2 = ((1.0 + sim) / 2.0) ** FLOOD_PROB_COMP_SIMILARITY_POWER
+            prob_continue = comp1 * comp2
+
+            if len(included_indices) >= MAX_PARAGRAPH_SIZE:
+                prob_continue = 0.0
+
+            if random.random() <= prob_continue:
+                if direction == "up":
+                    included_indices.insert(0, idx)
+                    up_vector = candidate_vec
+                else:
+                    included_indices.append(idx)
+                    down_vector = candidate_vec
+            else:
+                if direction == "up":
+                    up_stopped = True
+                else:
+                    down_stopped = True
+
+            if len(included_indices) >= MAX_PARAGRAPH_SIZE:
+                break
+
+        # loop ends when both directions stopped
+
+    sentences = [idx_to_row[i]["sentence_text"] for i in included_indices if i in idx_to_row]
+    return " ".join(sentences).strip()
 
 
 def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
