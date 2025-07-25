@@ -16,6 +16,8 @@ export interface TextMessage {
   fontWeight?: 'bold' | 'normal';
   fontStyle?: 'italic' | 'normal';
   fontSize?: string;
+  title?: string;
+  titleStyle?: TitleStyle;
 }
 
 export interface ProgressBarMessage {

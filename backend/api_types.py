@@ -1,4 +1,4 @@
-from typing import Any, Optional, Callable
+from typing import Any, List, Optional, Callable
 from dataclasses import asdict, dataclass
 
 from sentence_transformers import SentenceTransformer
@@ -86,3 +86,4 @@ class AppResources:
     embedding_model: SentenceTransformer
     bucket_path: str
     print_to_debug_log: Callable[[Any],None]
+    paragraph_to_query_relevance: Callable[[str, List[str]], List[float]]

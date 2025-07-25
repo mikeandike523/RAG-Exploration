@@ -5,3 +5,4 @@ eventlet
 termcolor
 redis
 pydantic
+rank_bm25

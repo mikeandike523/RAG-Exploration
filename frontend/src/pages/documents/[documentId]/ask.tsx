@@ -122,14 +122,48 @@ export default function AskPage({
         "/documents/ask",
         { document_id: documentId, question },
         {
-          onUpdate: ({ message }) => {
+          onUpdate: ({ message, extra }) => {
+            // Special formatted messages
+
+            if (message === "[evidence]") {
+              if (!extra) {
+                throw new Error("Extra data expected here.");
+              }
+              if (
+                typeof extra !== "object" ||
+                extra === null ||
+                Array.isArray(extra)
+              ) {
+                throw new Error("Invalid extra data format.");
+              }
+              if (!Number.isInteger(Number(extra.index))) {
+                throw new Error("Invalid index format.");
+              }
+              if (typeof extra.content !== "string") {
+                throw new Error("Invalid content format.");
+              }
+              const { index, content } = extra as {
+                index: number;
+                content: string;
+              };
+              addProgressMessage({
+                kind: "string",
+                title: `Evidence ${index + 1}`,
+                text: content,
+                color: "black",
+                titleStyle: { color: "darkgreen", fontWeight: "bold" },
+              });
+              return;
+            }
+
+            // Default case
             addProgressMessage({ kind: "string", text: message });
           },
           onProgress: ({ current, total, name }) => {
             if (name) {
               upsertProgressBarByTitle(name, current, total, {
                 showAsPercent: true,
-                titleStyle: { color: "blue" }
+                titleStyle: { color: "blue" },
               });
             }
           },

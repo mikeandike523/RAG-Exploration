@@ -7,7 +7,7 @@ interface LiveProgressViewerProps extends DivProps {
 }
 
 /** Renders a plain-text message */
-function MessageText({ message }: { message: TextMessage }) {
+function MessageText({ message}: { message: TextMessage }) {
   return (
     <Div
       width="100%"
@@ -17,8 +17,19 @@ function MessageText({ message }: { message: TextMessage }) {
       fontStyle={message.fontStyle}
       fontSize={message.fontSize}
       padding="0.5rem"
+      display="flex"
+      flexDirection="column"
+      alignItems="flex-start"
+      gap="0.25rem"
     >
-      <P>{message.text}</P>
+      {message.title && <P 
+        background={message.titleStyle?.backgroundColor}
+        color={message.titleStyle?.color}
+        fontWeight={message.titleStyle?.fontWeight}
+        fontStyle={message.titleStyle?.fontStyle}
+        fontSize={message.titleStyle?.fontSize}
+      >{message.title}</P>}
+      <P whiteSpace="pre-wrap">{message.text}</P>
     </Div>
   );
 }

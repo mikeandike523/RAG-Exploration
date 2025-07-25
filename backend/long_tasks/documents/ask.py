@@ -7,13 +7,15 @@ from pydantic import BaseModel, StrictStr, ValidationError, validator
 
 from backend.api_types import FatalTaskError, AppResources, TaskContext
 
-TOP_K=50
+TOP_K_SENTENCES=30
+TOP_K_PARAGRAPHS=10
 
-TARGET_PARAGRAPH_SIZE=20 # On average 15-sentence chunks
-MAX_PARAGRAPH_SIZE=30 # Hard maximum of 25
 
-FLOOD_PROB_COMP_SIZE_POWER=1/8
-FLOOD_PROB_COMP_SIMILARITY_POWER=1/8
+TARGET_PARAGRAPH_SIZE=15 # On average 15-sentence chunks
+MAX_PARAGRAPH_SIZE=25 # Hard maximum of 25
+
+FLOOD_PROB_COMP_SIZE_POWER=1/4
+FLOOD_PROB_COMP_SIMILARITY_POWER=1/4
 # Flood procedure:
 
 # Suppose we have sentence at index i in a document, called S_i
@@ -274,7 +276,7 @@ def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
         search_results = qdrant_client.search(
             collection_name=processed_object_id,
             query_vector=question_vector,
-            limit=TOP_K,
+            limit=TOP_K_SENTENCES,
             with_payload=True,
             with_vectors=True
         )
@@ -284,8 +286,8 @@ def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
     # Step 5: Tell UI to make new progress bar by emitting progress 0 with a unique name
     ctx.emit_progress(
         0,
-        TOP_K,
-        "Forming Text Blocks"
+        TOP_K_SENTENCES,
+        "Forming Paragraphs"
     )
 
     # Step 5 (temporary):
@@ -301,14 +303,35 @@ def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
 
         ctx.emit_progress(
             i+1,
-            TOP_K,
-            "Forming Text Blocks"
+            TOP_K_SENTENCES,
+            "Forming Paragraphs"
         )
 
-    for i,text_block in enumerate(found_text_blocks):
-        print_to_debug_log(f"Text Block {i+1}/{len(found_text_blocks)}:\n\n{text_block}\n\n")
+    
+    ctx.emit_update(
+        "Evaluating Paragraph Relevance..."
+    )
 
+    paragraph_to_query_relevance = app_resources.paragraph_to_query_relevance
 
+    paragraph_relevances = paragraph_to_query_relevance(params.question, found_text_blocks)
+
+    paragraph_relevancy_pairs = list(zip(found_text_blocks, paragraph_relevances))
+
+    sorted_paragraph_relevancy_pairs_desc = sorted(paragraph_relevancy_pairs, key=lambda x: x[1], reverse=True)
+
+    top_pairs = sorted_paragraph_relevancy_pairs_desc[:TOP_K_PARAGRAPHS]
+
+    top_paragraphs=[pair[0] for pair in top_pairs]
+
+    for i, paragraph in enumerate(top_paragraphs):
+        print_to_debug_log(f"Paragraph {i+1}:\n\n{paragraph}\n\n")
+        ctx.emit_update("[evidence]", {
+            "index": i,
+            "content": paragraph
+        })
+
+        
 
 
     return ""

@@ -27,6 +27,8 @@ from sentence_transformers import SentenceTransformer
 
 from src.utils.project_structure import get_project_root
 
+from backend.helpers.paragraph_to_query_relevance import paragraph_to_query_relevance
+
 from backend.short_tasks.files.upload.new_object import task_new_object
 from backend.short_tasks.files.upload.write_object_bytes import task_write_object_bytes
 from backend.short_tasks.documents.create import task_create as task_create_document
@@ -191,7 +193,8 @@ app_resources = AppResources(
     qdrant_client=qdrant_client,
     bucket_path=os.path.join(project_root, "bucket"),
     print_to_debug_log=print_to_debug_log,
-    embedding_model=embedding_model
+    embedding_model=embedding_model,
+    paragraph_to_query_relevance=paragraph_to_query_relevance
 )
 
 @app.route("/run", methods=["POST"])
