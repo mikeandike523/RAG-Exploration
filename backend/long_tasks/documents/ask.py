@@ -7,14 +7,13 @@ from pydantic import BaseModel, StrictStr, ValidationError, validator
 
 from backend.api_types import FatalTaskError, AppResources, TaskContext
 
-TOP_K=20
+TOP_K=50
 
-TARGET_PARAGRAPH_SIZE=15 # On average 15-sentence chunks
-MAX_PARAGRAPH_SIZE=25 # Hard maximum of 25
+TARGET_PARAGRAPH_SIZE=20 # On average 15-sentence chunks
+MAX_PARAGRAPH_SIZE=30 # Hard maximum of 25
 
-FLOOD_PROB_COMP_SIZE_POWER=2
-FLOOD_PROB_COMP_SIMILARITY_POWER=2
-
+FLOOD_PROB_COMP_SIZE_POWER=1/8
+FLOOD_PROB_COMP_SIMILARITY_POWER=1/8
 # Flood procedure:
 
 # Suppose we have sentence at index i in a document, called S_i
@@ -190,7 +189,7 @@ def search_result_to_text_block(result, app_resources: AppResources) -> str:
         # loop ends when both directions stopped
 
     sentences = [idx_to_row[i]["sentence_text"] for i in included_indices if i in idx_to_row]
-    return " ".join(sentences).strip()
+    return "\n".join(sentences).strip()
 
 
 def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
@@ -307,7 +306,7 @@ def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
         )
 
     for i,text_block in enumerate(found_text_blocks):
-        print_to_debug_log(f"\n\n\n\nText Block {i+1}/{len(found_text_blocks)}:\n\n{text_block}\n\n\n\n")
+        print_to_debug_log(f"Text Block {i+1}/{len(found_text_blocks)}:\n\n{text_block}\n\n")
 
 
 

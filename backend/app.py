@@ -44,6 +44,9 @@ logs_folder = os.path.join(backend_folder, "logs")
 
 logs_file_debug = os.path.join(logs_folder, "debug.txt")
 
+with open(logs_file_debug, "w") as fl:
+    fl.write("")
+
 def print_to_debug_log(message, *args, **kwargs):
     with open(logs_file_debug, "a") as fl:
         print(message, *args, file=fl, flush=True, **kwargs)
