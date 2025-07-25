@@ -10,6 +10,9 @@ TOP_K=20
 TARGET_PARAGRAPH_SIZE=15 # On average 15-sentence chunks
 MAX_PARAGRAPH_SIZE=25 # Hard maximum of 25
 
+FLOOD_PROB_COMP_SIZE_POWER=2
+FLOOD_PROB_COMP_SIMILARITY_POWER=2
+
 # Flood procedure:
 
 # Suppose we have sentence at index i in a document, called S_i
@@ -188,7 +191,8 @@ def task_ask(ctx:TaskContext,args: Dict, app_resources: AppResources) -> str:
             "Forming Text Blocks"
         )
 
-    
+    for i,text_block in enumerate(found_text_blocks):
+        print_to_debug_log(f"\n\n\n\nText Block {i+1}/{len(found_text_blocks)}:\n\n{text_block}\n\n\n\n")
 
 
 
